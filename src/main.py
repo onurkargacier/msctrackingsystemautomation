@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 # === Google Drive ve Sheets ayarları ===
-SPREADSHEET_ID = "SENİN_GOOGLE_SHEET_ID"
+SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 RANGE_NAME = "Sayfa1!A2:A"  # Konşimento numaralarının olduğu hücreler
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
