@@ -1,0 +1,33 @@
+name: MSC ETA Tracker
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Her gün sabah 6'da UTC
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repo klonla
+        uses: actions/checkout@v3
+
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Bağımlılıkları yükle
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps
+
+      - name: Environment ayarla
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" > google_credentials.json
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Scripti çalıştır
+        run: python src/main.py
