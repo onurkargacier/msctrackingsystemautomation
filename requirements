@@ -1,6 +1,6 @@
-playwright
 pandas
-openpyxl
-requests
-gspread
-oauth2client
+playwright
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
