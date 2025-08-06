@@ -1,95 +1,100 @@
-import base64
-import requests
+import pandas as pd
 
-def get_eta_etd(bl):
-    eta = "Bilinmiyor"
-    kaynak = "Bilinmiyor"
-    export_date = "Bilinmiyor"
+from datetime import datetime
 
-    try:
-        param = f"trackingNumber={bl}&trackingMode=0"
-        b64 = base64.b64encode(param.encode()).decode()
-        url = f"https://www.msc.com/en/track-a-shipment?params={b64}"
+from msc_eta_scraper import get_eta_etd
 
-        session = requests.Session()
-        page = session.get(url)
-        token = None
+import os
 
-        for line in page.text.splitlines():
-            if '__RequestVerificationToken' in line:
-                token = line.split('value="')[1].split('"')[0]
-                break
+import gspread
 
-        if not token:
-            raise Exception("Token alınamadı")
+from oauth2client.service_account import ServiceAccountCredentials
 
-        api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-            "Origin": "https://www.msc.com",
-            "Referer": url,
-            "User-Agent": "Mozilla/5.0",
-            "X-Requested-With": "XMLHttpRequest",
-            "__RequestVerificationToken": token,
-        }
-        payload = {
-            "trackingNumber": bl,
-            "trackingMode": "0"
-        }
+# === Google Sheets Ayarları ===
 
-        resp = session.post(api_url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+SPREADSHEET_ID = "SENİN_GOOGLE_SHEET_ID"  # <- burayı senin dosyanla değiştir
 
-        b = data.get("Data", {}).get("BillOfLadings", [])
-        if not b:
-            return eta, kaynak, export_date
+RANGE_NAME = "Sayfa1!A2:A"
 
-        bl_data = b[0]
-        genel = bl_data.get("GeneralTrackingInfo", {})
+JSON_KEYFILE = "google_credentials.json"
 
-        # ETA önceliklendirme
-        for container in bl_data.get("ContainersInfo", []):
-            for event in container.get("Events", []):
-                desc = event.get("Description", "").strip().lower()
-                if desc == "pod eta":
-                    eta = event.get("Date")
-                    kaynak = "POD ETA"
-                    break
-            if eta != "Bilinmiyor":
-                break
+def load_bl_list():
 
-        if eta == "Bilinmiyor" and genel.get("FinalPodEtaDate"):
-            eta = genel["FinalPodEtaDate"]
-            kaynak = "Final POD ETA"
+    scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-        if eta == "Bilinmiyor":
-            for container in bl_data.get("ContainersInfo", []):
-                d = container.get("PodEtaDate")
-                if d:
-                    eta = d
-                    kaynak = "Container POD ETA"
-                    break
+    creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEYFILE, scopes)
 
-        if eta == "Bilinmiyor":
-            for container in bl_data.get("ContainersInfo", []):
-                for event in container.get("Events", []):
-                    if event.get("Description", "").strip().lower() == "import to consignee":
-                        eta = event.get("Date")
-                        kaynak = "Import to consignee"
-                        break
+    client = gspread.authorize(creds)
 
-        # ETD → son konteynerin export loaded on vessel'ı
-        containers = bl_data.get("ContainersInfo", [])
-        if containers:
-            last = containers[-1]
-            for event in last.get("Events", []):
-                if event.get("Description", "").strip().lower() == "export loaded on vessel":
-                    export_date = event.get("Date")
-                    break
+    sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 
-    except Exception as e:
-        print(f"[{bl}] Hata: {e}")
+    bl_list = sheet.col_values(1)[1:]  # Başlık dışındaki konşimentolar
 
-    return eta, kaynak, export_date
+    return bl_list, sheet
+
+def update_sheet(sheet, results):
+
+    # başlıklara ETA, Kaynak, ETD tarihlerini ekle
+
+    headers = sheet.row_values(1)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if f"ETA ({today})" not in headers:
+
+        sheet.update_cell(1, len(headers)+1, f"ETA ({today})")
+
+        sheet.update_cell(1, len(headers)+2, f"Kaynak ({today})")
+
+        sheet.update_cell(1, len(headers)+3, f"ETD ({today})")
+
+        headers = sheet.row_values(1)
+
+    col_eta = headers.index(f"ETA ({today})") + 1
+
+    col_kaynak = headers.index(f"Kaynak ({today})") + 1
+
+    col_etd = headers.index(f"ETD ({today})") + 1
+
+    for i, res in enumerate(results):
+
+        sheet.update_cell(i+2, col_eta, res["ETA (Date)"])
+
+        sheet.update_cell(i+2, col_kaynak, res["Kaynak"])
+
+        sheet.update_cell(i+2, col_etd, res["Export Loaded on Vessel Date"])
+
+def main():
+
+    bl_list, sheet = load_bl_list()
+
+    print(f"🔢 {len(bl_list)} konşimento bulundu.")
+
+    results = []
+
+    for bl in bl_list:
+
+        eta, kaynak, etd = get_eta_etd(bl)
+
+        print(f"[{bl}] ETA: {eta} ({kaynak}), ETD: {etd}")
+
+        results.append({
+
+            "konşimento": bl,
+
+            "ETA (Date)": eta,
+
+            "Kaynak": kaynak,
+
+            "Export Loaded on Vessel Date": etd
+
+        })
+
+    update_sheet(sheet, results)
+
+    print("✅ Google Sheet güncellendi.")
+
+if __name__ == "__main__":
+
+    main()
+ 
