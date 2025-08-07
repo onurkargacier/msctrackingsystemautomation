@@ -32,7 +32,7 @@ def get_credentials():
 
         creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 
-        return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        return Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS"]), scopes=SCOPES)
 
     else:
 
