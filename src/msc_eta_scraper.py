@@ -1,96 +1,42 @@
-import pandas as pd
+import asyncio
+from playwright.async_api import async_playwright
 
-from datetime import datetime
+async def get_eta_etd(bl_number: str, sem: asyncio.Semaphore) -> dict:
+    """
+    Verilen konşimento (BL) numarası için MSC web sitesinden ETA verisini çeker.
+    Öncelik sırasına göre: POD ETA → FinalPodEtaDate → Import to Consignee
+    """
+    async with sem:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                print(f"[{bl_number}] Sayfa açılıyor...")
+                await page.goto("https://www.msc.com/track-a-shipment", timeout=60000)
 
-import os
+                print(f"[{bl_number}] BL numarası giriliyor...")
+                await page.fill("input[name=shipment]", bl_number)
+                await page.click("button:has-text('Track')")
 
-import gspread
+                print(f"[{bl_number}] Sonuçlar yükleniyor...")
+                await page.wait_for_selector("div.msc-tracking-bl-card", timeout=20000)
+                await page.click("div.msc-tracking-bl-card")  # Kart açılıyor
 
-from oauth2client.service_account import ServiceAccountCredentials
+                print(f"[{bl_number}] Detaylar açılıyor...")
+                await page.wait_for_selector("text=POD ETA", timeout=20000)
 
-# === Google Sheets Ayarları ===
+                # Öncelikli veri: POD ETA
+                pod_eta = await page.text_content("xpath=//div[contains(text(),'POD ETA')]/following-sibling::div")
+                if pod_eta and pod_eta.strip():
+                    return {"BL": bl_number, "POD ETA": pod_eta.strip(), "Kaynak": "POD ETA"}
 
-SPREADSHEET_ID = "SENİN_GOOGLE_SHEET_ID"  # <- burayı senin dosyanla değiştir
+                # Yedek veri: Import to Consignee
+                import_eta = await page.text_content("xpath=//div[contains(text(),'Import to Consignee')]/following-sibling::div")
+                if import_eta and import_eta.strip():
+                    return {"BL": bl_number, "POD ETA": import_eta.strip(), "Kaynak": "Import to Consignee"}
 
-RANGE_NAME = "Sayfa1!A2:A"
-
-JSON_KEYFILE = "google_credentials.json"
-
-def load_bl_list():
-
-    scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-    client = gspread.authorize(creds)
-
-    sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-
-    bl_list = sheet.col_values(1)[1:]  # Başlık dışındaki konşimentolar
-
-    return bl_list, sheet
-
-def update_sheet(sheet, results):
-
-    # başlıklara ETA, Kaynak, ETD tarihlerini ekle
-
-    headers = sheet.row_values(1)
-
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    if f"ETA ({today})" not in headers:
-
-        sheet.update_cell(1, len(headers)+1, f"ETA ({today})")
-
-        sheet.update_cell(1, len(headers)+2, f"Kaynak ({today})")
-
-        sheet.update_cell(1, len(headers)+3, f"ETD ({today})")
-
-        headers = sheet.row_values(1)
-
-    col_eta = headers.index(f"ETA ({today})") + 1
-
-    col_kaynak = headers.index(f"Kaynak ({today})") + 1
-
-    col_etd = headers.index(f"ETD ({today})") + 1
-
-    for i, res in enumerate(results):
-
-        sheet.update_cell(i+2, col_eta, res["ETA (Date)"])
-
-        sheet.update_cell(i+2, col_kaynak, res["Kaynak"])
-
-        sheet.update_cell(i+2, col_etd, res["Export Loaded on Vessel Date"])
-
-def main():
-
-    bl_list, sheet = load_bl_list()
-
-    print(f"🔢 {len(bl_list)} konşimento bulundu.")
-
-    results = []
-
-    for bl in bl_list:
-
-        eta, kaynak, etd = get_eta_etd(bl)
-
-        print(f"[{bl}] ETA: {eta} ({kaynak}), ETD: {etd}")
-
-        results.append({
-
-            "konşimento": bl,
-
-            "ETA (Date)": eta,
-
-            "Kaynak": kaynak,
-
-            "Export Loaded on Vessel Date": etd
-
-        })
-
-    update_sheet(sheet, results)
-
-    print("✅ Google Sheet güncellendi.")
-
-if __name__ == "__main__":
-
-    main()
- 
+                return {"BL": bl_number, "POD ETA": "Bulunamadı", "Kaynak": "Yok"}
+            except Exception as e:
+                return {"BL": bl_number, "Hata": str(e)}
+            finally:
+                await browser.close()
