@@ -1,33 +1,52 @@
-name: MSC ETA Tracker
+name: MSC ETA Günlük Takip
 
 on:
+
   schedule:
-    - cron: '0 6 * * *'   # Her gün sabah 6'da (UTC)
-  workflow_dispatch:
+
+    - cron: '0 6 * * *'  # Her gün saat 06:00'da UTC (Türkiye saatiyle 09:00)
+
+  workflow_dispatch:      # Manuel tetikleme opsiyonu
 
 jobs:
-  scrape:
+
+  run-scraper:
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Repo'yu klonla
-        uses: actions/checkout@v3
 
-      - name: Python kurulumu
-        uses: actions/setup-python@v4
+      - name: Kod deposunu klonla
+
+        uses: actions/checkout@v4
+
+      - name: Python ortamını kur
+
+        uses: actions/setup-python@v5
+
         with:
+
           python-version: '3.10'
 
-      - name: Bağımlılıkları yükle
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps
+      - name: Gereken kütüphaneleri yükle
 
-      - name: google_credentials.json dosyasını oluştur
         run: |
-          printf '%s' "${GOOGLE_CREDENTIALS}" > google_credentials.json
+
+          python -m pip install --upgrade pip
+
+          pip install -r src/requirements.txt
+
+          playwright install chromium
+
+      - name: Google Credentials dosyasını oluştur
+
+        run: echo "${{ secrets.GOOGLE_CREDENTIALS }}" > src/google_credentials.json
+
         env:
+
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-      - name: Python scriptini çalıştır
+      - name: Scraper'ı çalıştır
+
         run: python src/main.py
+ 
