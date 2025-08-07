@@ -1,3 +1,5 @@
+# 📁 main.py
+
 import asyncio
 
 import pandas as pd
@@ -8,103 +10,21 @@ import os
 
 import json
 
-import requests
-
 from google.oauth2.service_account import Credentials
 
 from googleapiclient.discovery import build
 
-# === MSC scraping: Mock get_eta_etd ===
-
-async def get_eta_etd(bl_number, sem):
-
-    async with sem:
-
-        print(f"[{bl_number}] Sayfa açılıyor...")
-
-        url = "https://www.msc.com/api/feature/tools/TrackingInfo"
-
-        headers = {
-
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-
-            "Accept": "application/json, text/plain, */*",
-
-            "Accept-Language": "en-US,en;q=0.9",
-
-            "Referer": "https://www.msc.com/",
-
-            "Origin": "https://www.msc.com",
-
-            "Connection": "keep-alive",
-
-        }
-
-        try:
-
-            response = requests.get(
-
-                url,
-
-                headers=headers,
-
-                params={"blNumber": bl_number},
-
-                timeout=15,
-
-            )
-
-            response.raise_for_status()
-
-            data = response.json()
-
-            # Dummy parsing (gerçek API'den gelen veri yapısına göre düzenle)
-
-            eta = data.get("podEta") or "Bilinmiyor"
-
-            etd = data.get("etd") or "-"
-
-            print(f"[{bl_number}] ✅ ETA: {eta} | Export: {etd}")
-
-            return {
-
-                "konşimento": bl_number,
-
-                "ETA (Date)": eta,
-
-                "Kaynak": "-",
-
-                "Export Loaded on Vess": etd,
-
-            }
-
-        except Exception as e:
-
-            print(f"[{bl_number}] ❌ Hata: {e}")
-
-            return {
-
-                "konşimento": bl_number,
-
-                "ETA (Date)": "Bilinmiyor",
-
-                "Kaynak": "-",
-
-                "Export Loaded on Vess": "-",
-
-            }
+from msc_eta_scraper import get_eta_etd
 
 # === Google Sheets ayarları ===
 
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 
-RANGE_NAME_READ = "Sayfa1!A2:A"
-
-RANGE_NAME_WRITE = "Sayfa1!B2"
+RANGE_NAME = "Sayfa1!A2:A"
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# === Google Sheets yetkilendirme ===
+# === Google Sheets bağlantısı ===
 
 def get_credentials():
 
@@ -114,11 +34,9 @@ def get_credentials():
 
         return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
-    else:
+    raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
 
-        raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
-
-# === Konşimentoları oku ===
+# === Konşimentoları Google Sheets'ten oku ===
 
 def load_bl_list():
 
@@ -128,13 +46,13 @@ def load_bl_list():
 
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME_READ).execute()
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
 
     values = result.get("values", [])
 
     return [row[0] for row in values if row]
 
-# === Sonuçları Google Sheets'e yaz ===
+# === Veriyi Google Sheets'e yaz ===
 
 def write_to_sheets(data):
 
@@ -144,49 +62,45 @@ def write_to_sheets(data):
 
     sheet = service.spreadsheets()
 
-    values = [[
+    values = [[row.get("Konşimento"), row.get("ETA (Date)"), row.get("Kaynak"), row.get("Export Loaded on Vessel Date")]
 
-        row["konşimento"],
+              for row in data]
 
-        row["ETA (Date)"],
-
-        row["Kaynak"],
-
-        row["Export Loaded on Vess"],
-
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-
-    ] for row in data]
+    update_range = "Sayfa1!B2:E"
 
     sheet.values().update(
 
         spreadsheetId=SPREADSHEET_ID,
 
-        range=RANGE_NAME_WRITE,
+        range=update_range,
 
         valueInputOption="RAW",
 
-        body={"values": values},
+        body={"values": values}
 
     ).execute()
-
-    print("📤 Veriler Google Sheets'e yazıldı.")
 
 # === Asenkron scraping ===
 
 async def run_all(bl_list):
 
+    from playwright.async_api import async_playwright
+
     results = []
 
-    sem = asyncio.Semaphore(8)
+    async with async_playwright() as pw:
 
-    tasks = [get_eta_etd(bl, sem) for bl in bl_list]
+        browser = await pw.chromium.launch(headless=True)
 
-    for coro in asyncio.as_completed(tasks):
+        sem = asyncio.Semaphore(8)
 
-        result = await coro
+        tasks = [get_eta_etd(bl, sem, browser) for bl in bl_list]
 
-        results.append(result)
+        for coro in asyncio.as_completed(tasks):
+
+            results.append(await coro)
+
+        await browser.close()
 
     return results
 
@@ -194,21 +108,9 @@ async def run_all(bl_list):
 
 async def main():
 
-    print("📥 BL listesi yükleniyor...")
+    print("\U0001F4E5 BL listesi yükleniyor...")
 
     bl_list = load_bl_list()
 
-    print(f"🔢 {len(bl_list)} konşimento bulundu.")
-
-    print("🚢 ETA verileri çekiliyor...")
-
-    results = await run_all(bl_list)
-
-    write_to_sheets(results)
-
-# === Çalıştır ===
-
-if __name__ == "__main__":
-
-    asyncio.run(main())
+    print(f"
  
