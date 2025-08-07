@@ -2,8 +2,6 @@ import pandas as pd
 
 from datetime import datetime
 
-from msc_eta_scraper import get_eta_etd
-
 import os
 
 import gspread
