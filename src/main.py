@@ -1,30 +1,40 @@
 import asyncio
 
+import base64
+
+import pandas as pd
+
+import unicodedata
+
 import json
 
 import os
 
-import pandas as pd
-
-from datetime import datetime
+from playwright.async_api import async_playwright
 
 from google.oauth2.service_account import Credentials
 
 from googleapiclient.discovery import build
 
-from msc_eta_scraper import get_eta_etd  # Bu dosya src klasöründe olmalı
-
-# === Google Sheets Ayarları ===
+# === GOOGLE SHEETS AYARLARI ===
 
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 
-READ_RANGE = "Sayfa1!A2:A"
+RANGE_READ = "Sayfa1!A2:A"
 
-WRITE_RANGE = "Sayfa1!B2"
+RANGE_WRITE = "Sayfa1!B2"
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]  # ✅ Yazma için gerekli
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# === Google API kimlik bilgilerini al ===
+# === DİACRITIC KALDIRICI ===
+
+def normalize(s: str) -> str:
+
+    nfkd = unicodedata.normalize("NFKD", s)
+
+    return "".join(c for c in nfkd if unicodedata.category(c) != "Mn").lower()
+
+# === GOOGLE SHEETS CREDENTIALS ===
 
 def get_credentials():
 
@@ -34,11 +44,9 @@ def get_credentials():
 
         return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
-    else:
+    raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
 
-        raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
-
-# === Google Sheets’ten konşimento listesini oku ===
+# === GOOGLE SHEETS READ ===
 
 def load_bl_list():
 
@@ -48,39 +56,29 @@ def load_bl_list():
 
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=READ_RANGE).execute()
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_READ).execute()
 
     values = result.get("values", [])
 
     return [row[0] for row in values if row]
 
-# === Sonuçları Google Sheets’e yaz ===
+# === GOOGLE SHEETS WRITE ===
 
-def write_to_google_sheets(data):
+def write_results_to_sheet(data):
 
     creds = get_credentials()
 
     service = build("sheets", "v4", credentials=creds)
 
-    sheet = service.spreadsheets()
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    values = [
-
-        [row["ETA (Date)"], row["Kaynak"], row["Export Loaded on Vessel Date"], now]
-
-        for row in data
-
-    ]
+    values = [[row["ETA (Date)"], row["Kaynak"], row["Export Loaded on Vessel Date"]] for row in data]
 
     body = {"values": values}
 
-    sheet.values().update(
+    service.spreadsheets().values().update(
 
         spreadsheetId=SPREADSHEET_ID,
 
-        range=WRITE_RANGE,
+        range=RANGE_WRITE,
 
         valueInputOption="RAW",
 
@@ -90,7 +88,159 @@ def write_to_google_sheets(data):
 
     print("📤 Veriler Google Sheets'e yazıldı.")
 
-# === Asenkron scraping işlemi ===
+# === MSC VERİ ÇEKME ===
+
+async def get_eta_etd(bl: str, sem, browser):
+
+    async with sem:
+
+        page = await browser.new_page()
+
+        page.set_default_navigation_timeout(120000)
+
+        page.set_default_timeout(15000)
+
+        await page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
+
+        eta = kaynak = export_date = "Bilinmiyor"
+
+        try:
+
+            param = f"trackingNumber={bl}&trackingMode=0"
+
+            b64   = base64.b64encode(param.encode()).decode()
+
+            url   = f"https://www.msc.com/en/track-a-shipment?params={b64}"
+
+            await page.goto(url, wait_until="domcontentloaded")
+
+            cookies = await page.context.cookies()
+
+            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+
+            token = await page.evaluate("() => document.querySelector('input[name=__RequestVerificationToken]')?.value")
+
+            await page.close()
+
+            headers = {
+
+                "Accept": "application/json, text/plain, */*",
+
+                "Content-Type": "application/json",
+
+                "Cookie": cookie_str,
+
+                "Origin": "https://www.msc.com",
+
+                "Referer": url,
+
+                "User-Agent": "Mozilla/5.0",
+
+                "X-Requested-With": "XMLHttpRequest",
+
+                "__RequestVerificationToken": token,
+
+            }
+
+            response = await browser.new_context().request.post(
+
+                "https://www.msc.com/api/feature/tools/TrackingInfo",
+
+                data=json.dumps({"trackingNumber": bl, "trackingMode": "0"}),
+
+                headers=headers
+
+            )
+
+            data = await response.json()
+
+            bill_of_ladings = data.get("Data", {}).get("BillOfLadings", [])
+
+            if bill_of_ladings:
+
+                general_info = bill_of_ladings[0].get("GeneralTrackingInfo", {})
+
+                export_events = [
+
+                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
+
+                    for event in container.get("Events", [])
+
+                    if event.get("Description", "").strip().lower() == "export loaded on vessel"
+
+                ]
+
+                if export_events:
+
+                    export_date = export_events[-1]
+
+                event_etas = [
+
+                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
+
+                    for event in container.get("Events", [])
+
+                    if event.get("Description", "").strip().lower() == "pod eta"
+
+                ]
+
+                if event_etas:
+
+                    eta, kaynak = event_etas[0], "POD ETA"
+
+                elif general_info.get("FinalPodEtaDate"):
+
+                    eta, kaynak = general_info["FinalPodEtaDate"], "Final POD ETA"
+
+                else:
+
+                    container_etas = [
+
+                        container.get("PodEtaDate") for container in bill_of_ladings[0].get("ContainersInfo", [])
+
+                        if container.get("PodEtaDate")
+
+                    ]
+
+                    if container_etas:
+
+                        eta, kaynak = container_etas[0], "Container POD ETA"
+
+                if eta == "Bilinmiyor":
+
+                    events = [
+
+                        event for container in bill_of_ladings[0].get("ContainersInfo", [])
+
+                        for event in container.get("Events", [])
+
+                    ]
+
+                    itd = next((e.get("Date") for e in events if e.get("Description", "").strip().lower() == "import to consignee"), None)
+
+                    if itd:
+
+                        eta, kaynak = itd, "Import to consignee"
+
+        except Exception as e:
+
+            print(f"[{bl}] ⚠️ Hata: {e}")
+
+        print(f"[{bl}] → ETA: {eta} ({kaynak}), Export: {export_date}")
+
+        return {
+
+            "konşimento": bl,
+
+            "ETA (Date)": eta,
+
+            "Kaynak": kaynak,
+
+            "Export Loaded on Vessel Date": export_date
+
+        }
+
+# === ASENKRON ANA İŞLEM ===
 
 async def run_all(bl_list):
 
@@ -98,33 +248,37 @@ async def run_all(bl_list):
 
     sem = asyncio.Semaphore(8)
 
-    tasks = [get_eta_etd(bl, sem) for bl in bl_list]
+    async with async_playwright() as pw:
 
-    for coro in asyncio.as_completed(tasks):
+        browser = await pw.chromium.launch(headless=True)
 
-        result = await coro
+        tasks = [get_eta_etd(bl, sem, browser) for bl in bl_list]
 
-        results.append(result)
+        for coro in asyncio.as_completed(tasks):
+
+            result = await coro
+
+            results.append(result)
+
+        await browser.close()
 
     return results
 
-# === Ana fonksiyon ===
+# === ANA ===
 
 async def main():
 
-    print("📥 BL listesi yükleniyor...")
+    print("\U0001F4E5 BL listesi yükleniyor...")
 
     bl_list = load_bl_list()
 
-    print(f"🔢 {len(bl_list)} konşimento bulundu.")
+    print(f"\U0001F522 {len(bl_list)} konşimento bulundu.")
 
-    print("🚢 ETA verileri çekiliyor...")
+    print("\U0001F6A2 ETA verileri çekiliyor...")
 
     results = await run_all(bl_list)
 
-    write_to_google_sheets(results)
-
-# === Çalıştır ===
+    write_results_to_sheet(results)
 
 if __name__ == "__main__":
 
