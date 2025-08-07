@@ -1,25 +1,30 @@
 import asyncio
 import pandas as pd
 from datetime import datetime
+import os
+import json
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from msc_eta_scraper import get_eta_etd
 
-# === Google Drive ve Sheets ayarları ===
+# === Google Sheets API ayarları ===
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
-RANGE_NAME = "Sayfa1!A2:A"  # Konşimento numaralarının olduğu hücreler
+RANGE_NAME = "Sayfa1!A2:A"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-# === Google Sheets’ten konşimentoları oku ===
+# === Google Sheets'ten konşimento numaralarını oku ===
 def load_bl_list():
-    creds = Credentials.from_service_account_file("google_credentials.json", scopes=SCOPES)
+    print("🔐 Google Credentials yükleniyor...")
+    service_account_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     service = build("sheets", "v4", credentials=creds)
     sheet = service.spreadsheets()
     result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
     values = result.get("values", [])
     return [row[0] for row in values if row]
 
-# === Asenkron scraping ===
+# === Asenkron scraping fonksiyonu ===
 async def run_all(bl_list):
     from playwright.async_api import async_playwright
     results = []
@@ -33,7 +38,7 @@ async def run_all(bl_list):
         await browser.close()
     return results
 
-# === Çıktıyı Excel olarak kaydet ===
+# === Excel'e yaz ===
 def save_to_excel(data, filename="guncel_eta.xlsx"):
     df = pd.DataFrame(data)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -41,7 +46,7 @@ def save_to_excel(data, filename="guncel_eta.xlsx"):
     df.to_excel(filename, index=False)
     print(f"📄 Excel oluşturuldu: {filename}")
 
-# === Ana çalışma fonksiyonu ===
+# === Ana akış ===
 async def main():
     print("📥 BL listesi yükleniyor...")
     bl_list = load_bl_list()
@@ -52,6 +57,6 @@ async def main():
 
     save_to_excel(results)
 
-# === Çalıştır ===
+# === Başlatıcı ===
 if __name__ == "__main__":
     asyncio.run(main())
