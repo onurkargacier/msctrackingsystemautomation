@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from msc_eta_scraper import get_eta_etd
-from send_email import send_email_with_attachment  # ✅ Eklenen satır
+from send_email import send_email_with_attachment  # ✅ Mail fonksiyonunu dahil ettik
 
 # === Google Sheets ayarları ===
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
@@ -57,8 +57,13 @@ async def main():
 
     save_to_excel(results)
 
+    # ✅ Excel oluşturulduktan sonra mail gönder
+    send_email_with_attachment(
+        subject="Günlük MSC ETA Raporu",
+        body="Merhaba,\n\nEk'te günlük MSC ETA raporunuzu bulabilirsiniz.\n\nİyi çalışmalar.",
+        filename="guncel_eta.xlsx"
+    )
+
+# === Çalıştır
 if __name__ == "__main__":
     asyncio.run(main())
-
-    # ✅ Excel çıktıdan sonra mail gönder
-    send_email_with_attachment("guncel_eta.xlsx")
