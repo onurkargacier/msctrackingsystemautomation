@@ -8,23 +8,103 @@ import os
 
 import json
 
+import requests
+
 from google.oauth2.service_account import Credentials
 
 from googleapiclient.discovery import build
 
-from msc_eta_scraper import get_eta_etd
+# === MSC scraping: Mock get_eta_etd ===
+
+async def get_eta_etd(bl_number, sem):
+
+    async with sem:
+
+        print(f"[{bl_number}] Sayfa açılıyor...")
+
+        url = "https://www.msc.com/api/feature/tools/TrackingInfo"
+
+        headers = {
+
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+
+            "Accept": "application/json, text/plain, */*",
+
+            "Accept-Language": "en-US,en;q=0.9",
+
+            "Referer": "https://www.msc.com/",
+
+            "Origin": "https://www.msc.com",
+
+            "Connection": "keep-alive",
+
+        }
+
+        try:
+
+            response = requests.get(
+
+                url,
+
+                headers=headers,
+
+                params={"blNumber": bl_number},
+
+                timeout=15,
+
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Dummy parsing (gerçek API'den gelen veri yapısına göre düzenle)
+
+            eta = data.get("podEta") or "Bilinmiyor"
+
+            etd = data.get("etd") or "-"
+
+            print(f"[{bl_number}] ✅ ETA: {eta} | Export: {etd}")
+
+            return {
+
+                "konşimento": bl_number,
+
+                "ETA (Date)": eta,
+
+                "Kaynak": "-",
+
+                "Export Loaded on Vess": etd,
+
+            }
+
+        except Exception as e:
+
+            print(f"[{bl_number}] ❌ Hata: {e}")
+
+            return {
+
+                "konşimento": bl_number,
+
+                "ETA (Date)": "Bilinmiyor",
+
+                "Kaynak": "-",
+
+                "Export Loaded on Vess": "-",
+
+            }
 
 # === Google Sheets ayarları ===
 
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 
-RANGE_READ = "Sayfa1!A2:A"
+RANGE_NAME_READ = "Sayfa1!A2:A"
 
-RANGE_WRITE = "Sayfa1!B2"  # Çıktının başlayacağı hücre
+RANGE_NAME_WRITE = "Sayfa1!B2"
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# === Kimlik doğrulama ===
+# === Google Sheets yetkilendirme ===
 
 def get_credentials():
 
@@ -32,13 +112,13 @@ def get_credentials():
 
         creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 
-        return Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS"]), scopes=SCOPES)
+        return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
     else:
 
         raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
 
-# === Google Sheets'ten konşimento listesini oku ===
+# === Konşimentoları oku ===
 
 def load_bl_list():
 
@@ -48,13 +128,13 @@ def load_bl_list():
 
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_READ).execute()
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME_READ).execute()
 
     values = result.get("values", [])
 
     return [row[0] for row in values if row]
 
-# === Google Sheets'e veri yaz ===
+# === Sonuçları Google Sheets'e yaz ===
 
 def write_to_sheets(data):
 
@@ -64,21 +144,29 @@ def write_to_sheets(data):
 
     sheet = service.spreadsheets()
 
-    df = pd.DataFrame(data)
+    values = [[
 
-    df["Çekildiği Tarih"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row["konşimento"],
 
-    values = [df.columns.tolist()] + df.values.tolist()  # Başlık + veri
+        row["ETA (Date)"],
+
+        row["Kaynak"],
+
+        row["Export Loaded on Vess"],
+
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+
+    ] for row in data]
 
     sheet.values().update(
 
         spreadsheetId=SPREADSHEET_ID,
 
-        range=RANGE_WRITE,
+        range=RANGE_NAME_WRITE,
 
         valueInputOption="RAW",
 
-        body={"values": values}
+        body={"values": values},
 
     ).execute()
 
@@ -106,13 +194,13 @@ async def run_all(bl_list):
 
 async def main():
 
-    print("\U0001F4E5 BL listesi yükleniyor...")
+    print("📥 BL listesi yükleniyor...")
 
     bl_list = load_bl_list()
 
-    print(f"\U0001F522 {len(bl_list)} konşimento bulundu.")
+    print(f"🔢 {len(bl_list)} konşimento bulundu.")
 
-    print("\U0001F6A2 ETA verileri çekiliyor...")
+    print("🚢 ETA verileri çekiliyor...")
 
     results = await run_all(bl_list)
 
