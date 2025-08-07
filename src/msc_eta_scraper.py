@@ -20,8 +20,6 @@ def load_bl_list():
 
     scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-    creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEYFILE, scopes)
-
     client = gspread.authorize(creds)
 
     sheet = client.open_by_key(SPREADSHEET_ID).sheet1
