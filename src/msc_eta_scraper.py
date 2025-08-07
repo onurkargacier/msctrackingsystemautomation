@@ -1,14 +1,8 @@
-import asyncio
-
 import base64
 
 import unicodedata
 
 import requests
-
-from playwright.async_api import async_playwright
-
-# Normalize (Türkçe karakterler ve büyük harfleri düzeltir)
 
 def normalize(s: str) -> str:
 
@@ -16,49 +10,37 @@ def normalize(s: str) -> str:
 
     return "".join(c for c in nfkd if unicodedata.category(c) != "Mn").lower()
 
-# ETA ve ETD bilgilerini getir
-
-async def get_eta_etd(bl: str, sem: asyncio.Semaphore) -> dict:
+async def get_eta_etd(bl, sem, browser):
 
     async with sem:
 
-        eta = "Bilinmiyor"
+        page = await browser.new_page()
 
-        kaynak = "-"
+        page.set_default_navigation_timeout(120000)
 
-        export_date = "-"
+        page.set_default_timeout(15000)
+
+        await page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
+
+        eta = kaynak = export_date = "Bilinmiyor"
 
         try:
 
-            async with async_playwright() as p:
+            param = f"trackingNumber={bl}&trackingMode=0"
 
-                browser = await p.chromium.launch(headless=True)
+            b64 = base64.b64encode(param.encode()).decode()
 
-                context = await browser.new_context()
+            url = f"https://www.msc.com/en/track-a-shipment?params={b64}"
 
-                page = await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded")
 
-                page.set_default_navigation_timeout(60000)
+            cookies = await page.context.cookies()
 
-                page.set_default_timeout(15000)
+            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
 
-                param = f"trackingNumber={bl}&trackingMode=0"
+            token = await page.evaluate("() => document.querySelector('input[name=__RequestVerificationToken]')?.value")
 
-                b64 = base64.b64encode(param.encode()).decode()
-
-                url = f"https://www.msc.com/en/track-a-shipment?params={b64}"
-
-                await page.goto(url, wait_until="domcontentloaded")
-
-                cookies = await context.cookies()
-
-                cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
-
-                token = await page.evaluate("() => document.querySelector('input[name=__RequestVerificationToken]')?.value")
-
-                await browser.close()
-
-            # MSC API'ye bağlan
+            await page.close()
 
             api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
 
@@ -82,7 +64,7 @@ async def get_eta_etd(bl: str, sem: asyncio.Semaphore) -> dict:
 
                 "Referer": url,
 
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
 
                 "X-Requested-With": "XMLHttpRequest",
 
@@ -98,109 +80,81 @@ async def get_eta_etd(bl: str, sem: asyncio.Semaphore) -> dict:
 
             bill_of_ladings = data.get("Data", {}).get("BillOfLadings", [])
 
-            if not bill_of_ladings:
+            if bill_of_ladings:
 
-                return {
+                general_info = bill_of_ladings[0].get("GeneralTrackingInfo", {})
 
-                    "konşimento": bl,
+                export_events = [
 
-                    "ETA (Date)": eta,
+                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
 
-                    "Kaynak": kaynak,
+                    for event in container.get("Events", [])
 
-                    "Export Loaded on Vessel Date": export_date
+                    if event.get("Description", "").strip().lower() == "export loaded on vessel"
 
-                }
+                ]
 
-            containers = bill_of_ladings[0].get("ContainersInfo", [])
+                if export_events:
 
-            general_info = bill_of_ladings[0].get("GeneralTrackingInfo", {})
+                    export_date = export_events[-1]
 
-            # 1. POD ETA
+                event_etas = [
 
-            for container in containers:
+                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
 
-                for event in container.get("Events", []):
+                    for event in container.get("Events", [])
 
-                    if event.get("Description", "").strip().lower() == "pod eta":
+                    if event.get("Description", "").strip().lower() == "pod eta"
 
-                        eta = event.get("Date")
+                ]
 
-                        kaynak = "POD ETA"
+                if event_etas:
 
-                        break
+                    eta, kaynak = event_etas[0], "POD ETA"
 
-                if eta != "Bilinmiyor":
+                elif general_info.get("FinalPodEtaDate"):
 
-                    break
+                    eta, kaynak = general_info["FinalPodEtaDate"], "Final POD ETA"
 
-            # 2. FinalPodEtaDate
+                else:
 
-            if eta == "Bilinmiyor" and general_info.get("FinalPodEtaDate"):
+                    container_etas = [
 
-                eta = general_info["FinalPodEtaDate"]
+                        container.get("PodEtaDate") for container in bill_of_ladings[0].get("ContainersInfo", [])
 
-                kaynak = "Final POD ETA"
+                        if container.get("PodEtaDate")
 
-            # 3. Container POD ETA
+                    ]
 
-            if eta == "Bilinmiyor":
+                    if container_etas:
 
-                for container in containers:
+                        eta, kaynak = container_etas[0], "Container POD ETA"
 
-                    if container.get("PodEtaDate"):
+                if eta == "Bilinmiyor":
 
-                        eta = container["PodEtaDate"]
+                    events = [
 
-                        kaynak = "Container POD ETA"
+                        event for container in bill_of_ladings[0].get("ContainersInfo", [])
 
-                        break
+                        for event in container.get("Events", [])
 
-            # 4. Import to Consignee
+                    ]
 
-            if eta == "Bilinmiyor":
+                    itd = next((e.get("Date") for e in events if e.get("Description", "").strip().lower() == "import to consignee"), None)
 
-                for container in containers:
+                    if itd:
 
-                    for event in container.get("Events", []):
-
-                        if event.get("Description", "").strip().lower() == "import to consignee":
-
-                            eta = event.get("Date")
-
-                            kaynak = "Import to consignee"
-
-                            break
-
-                    if eta != "Bilinmiyor":
-
-                        break
-
-            # Export Loaded on Vessel
-
-            for container in containers[::-1]:  # sondan başa al
-
-                for event in container.get("Events", []):
-
-                    if event.get("Description", "").strip().lower() == "export loaded on vessel":
-
-                        export_date = event.get("Date")
-
-                        break
-
-                if export_date != "-":
-
-                    break
+                        eta, kaynak = itd, "Import to consignee"
 
         except Exception as e:
 
-            print(f"[{bl}] ❌ Hata: {e}")
+            print(f"[{bl}] ⚠️ Hata: {e}")
 
         print(f"[{bl}] ✅ ETA: {eta} ({kaynak}) | Export: {export_date}")
 
         return {
 
-            "konşimento": bl,
+            "Konşimento": bl,
 
             "ETA (Date)": eta,
 
@@ -209,3 +163,6 @@ async def get_eta_etd(bl: str, sem: asyncio.Semaphore) -> dict:
             "Export Loaded on Vessel Date": export_date
 
         }
+Shipping Container Tracking and Tracing | MSC
+MSC offers an online tracking and tracing system enabling containers to be tracked throughout the world. Find your freight fast. Contact our team today!
+ 
