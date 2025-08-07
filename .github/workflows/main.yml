@@ -1,4 +1,4 @@
-name: MSC ETA Tracking System
+name: MSC ETA Tracking Automation
 
 on:
 
@@ -6,21 +6,21 @@ on:
 
   schedule:
 
-    - cron: '0 8 * * *' # Her gün sabah 08:00'de çalışır (UTC)
+    - cron: '0 6 * * *' # Her gün saat 09:00'da (UTC 06:00 Türkiye 09:00)
 
 jobs:
 
-  run-tracker:
+  run-script:
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Repo'yu klonla
+      - name: Reposoyu klonla
 
         uses: actions/checkout@v3
 
-      - name: Python 3.10 kur
+      - name: Python ortamını kur
 
         uses: actions/setup-python@v4
 
@@ -28,23 +28,19 @@ jobs:
 
           python-version: '3.10'
 
-      - name: Playwright bağımlılıklarını yükle
+      - name: Bağımlılıkları yükle
 
         run: |
+
+          sudo apt-get update
+
+          sudo apt-get install -y libglib2.0-0 libnss3 libatk-bridge2.0-0 libcups2 libxss1 libasound2 libgbm-dev libgtk-3-0
 
           python -m pip install --upgrade pip
 
-          pip install -r requirements.txt
+          pip install pandas google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 playwright
 
-          playwright install --with-deps
-
-      - name: Ortam değişkeni olarak GOOGLE_CREDENTIALS yaz
-
-        run: |
-
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > google_credentials.json
-
-        shell: bash
+          playwright install chromium
 
       - name: Scripti çalıştır
 
@@ -53,4 +49,6 @@ jobs:
         env:
 
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
  
