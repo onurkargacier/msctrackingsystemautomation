@@ -1,14 +1,16 @@
 import asyncio
 
-import base64
-
-import pandas as pd
-
-import unicodedata
-
 import json
 
 import os
+
+import unicodedata
+
+import pandas as pd
+
+import base64
+
+import requests
 
 from playwright.async_api import async_playwright
 
@@ -16,17 +18,9 @@ from google.oauth2.service_account import Credentials
 
 from googleapiclient.discovery import build
 
-# === GOOGLE SHEETS AYARLARI ===
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 
-SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
-
-RANGE_READ = "Sayfa1!A2:A"
-
-RANGE_WRITE = "Sayfa1!B2"
-
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-
-# === DİACRITIC KALDIRICI ===
+RANGE_NAME = "A2"
 
 def normalize(s: str) -> str:
 
@@ -34,21 +28,19 @@ def normalize(s: str) -> str:
 
     return "".join(c for c in nfkd if unicodedata.category(c) != "Mn").lower()
 
-# === GOOGLE SHEETS CREDENTIALS ===
-
 def get_credentials():
 
-    if "GOOGLE_CREDENTIALS" in os.environ:
+    raw_json = os.getenv("GOOGLE_CREDENTIALS")
 
-        creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+    if not raw_json:
 
-        return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        raise Exception("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
 
-    raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
+    info = json.loads(raw_json)
 
-# === GOOGLE SHEETS READ ===
+    return Credentials.from_service_account_info(info)
 
-def load_bl_list():
+def read_bl_list():
 
     creds = get_credentials()
 
@@ -56,13 +48,11 @@ def load_bl_list():
 
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_READ).execute()
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
 
     values = result.get("values", [])
 
     return [row[0] for row in values if row]
-
-# === GOOGLE SHEETS WRITE ===
 
 def write_results_to_sheet(data):
 
@@ -70,35 +60,29 @@ def write_results_to_sheet(data):
 
     service = build("sheets", "v4", credentials=creds)
 
-    values = [[row["ETA (Date)"], row["Kaynak"], row["Export Loaded on Vessel Date"]] for row in data]
+    sheet = service.spreadsheets()
 
-    body = {"values": values}
+    headers = [["Konşimento", "ETA (Date)", "Kaynak", "Export Loaded on Vessel Date"]]
 
-    service.spreadsheets().values().update(
+    values = [headers[0]] + [[row["konşimento"], row["ETA (Date)"], row["Kaynak"], row["Export Loaded on Vessel Date"]] for row in data]
+
+    sheet.values().update(
 
         spreadsheetId=SPREADSHEET_ID,
 
-        range=RANGE_WRITE,
+        range="D1",
 
         valueInputOption="RAW",
 
-        body=body
+        body={"values": values}
 
     ).execute()
 
-    print("📤 Veriler Google Sheets'e yazıldı.")
-
-# === MSC VERİ ÇEKME ===
-
-async def get_eta_etd(bl: str, sem, browser):
+async def get_eta_etd(bl, browser, sem):
 
     async with sem:
 
         page = await browser.new_page()
-
-        page.set_default_navigation_timeout(120000)
-
-        page.set_default_timeout(15000)
 
         await page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
 
@@ -108,9 +92,9 @@ async def get_eta_etd(bl: str, sem, browser):
 
             param = f"trackingNumber={bl}&trackingMode=0"
 
-            b64   = base64.b64encode(param.encode()).decode()
+            b64 = base64.b64encode(param.encode()).decode()
 
-            url   = f"https://www.msc.com/en/track-a-shipment?params={b64}"
+            url = f"https://www.msc.com/en/track-a-shipment?params={b64}"
 
             await page.goto(url, wait_until="domcontentloaded")
 
@@ -121,6 +105,8 @@ async def get_eta_etd(bl: str, sem, browser):
             token = await page.evaluate("() => document.querySelector('input[name=__RequestVerificationToken]')?.value")
 
             await page.close()
+
+            payload = {"trackingNumber": bl, "trackingMode": "0"}
 
             headers = {
 
@@ -141,85 +127,82 @@ async def get_eta_etd(bl: str, sem, browser):
                 "__RequestVerificationToken": token,
 
             }
-                context = await browser.new_context()
-                response = await context.request.post(
-                "https://www.msc.com/api/feature/tools/TrackingInfo",
-               data=json.dumps({"trackingNumber": bl, "trackingMode": "0"}),
-               headers=headers
-)
-        
 
-            )
+            api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
 
-            data = await response.json()
+            response = requests.post(api_url, headers=headers, json=payload)
 
-            bill_of_ladings = data.get("Data", {}).get("BillOfLadings", [])
+            response.raise_for_status()
 
-            if bill_of_ladings:
+            data = response.json()
 
-                general_info = bill_of_ladings[0].get("GeneralTrackingInfo", {})
+            bill = data.get("Data", {}).get("BillOfLadings", [])[0]
 
-                export_events = [
+            general_info = bill.get("GeneralTrackingInfo", {})
 
-                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
+            containers = bill.get("ContainersInfo", [])
 
-                    for event in container.get("Events", [])
+            # 1) POD ETA
 
-                    if event.get("Description", "").strip().lower() == "export loaded on vessel"
+            for container in containers:
 
-                ]
+                for event in container.get("Events", []):
 
-                if export_events:
+                    if event.get("Description", "").strip().lower() == "pod eta":
 
-                    export_date = export_events[-1]
+                        eta, kaynak = event.get("Date"), "POD ETA"
 
-                event_etas = [
+                        break
 
-                    event.get("Date") for container in bill_of_ladings[0].get("ContainersInfo", [])
+                if eta != "Bilinmiyor":
 
-                    for event in container.get("Events", [])
+                    break
 
-                    if event.get("Description", "").strip().lower() == "pod eta"
+            # 2) FinalPodEtaDate
 
-                ]
+            if eta == "Bilinmiyor" and general_info.get("FinalPodEtaDate"):
 
-                if event_etas:
+                eta, kaynak = general_info["FinalPodEtaDate"], "Final POD ETA"
 
-                    eta, kaynak = event_etas[0], "POD ETA"
+            # 3) PodEtaDate
 
-                elif general_info.get("FinalPodEtaDate"):
+            if eta == "Bilinmiyor":
 
-                    eta, kaynak = general_info["FinalPodEtaDate"], "Final POD ETA"
+                for container in containers:
 
-                else:
+                    pod_date = container.get("PodEtaDate")
 
-                    container_etas = [
+                    if pod_date:
 
-                        container.get("PodEtaDate") for container in bill_of_ladings[0].get("ContainersInfo", [])
+                        eta, kaynak = pod_date, "Container POD ETA"
 
-                        if container.get("PodEtaDate")
+                        break
 
-                    ]
+            # 4) Import to consignee
 
-                    if container_etas:
+            if eta == "Bilinmiyor":
 
-                        eta, kaynak = container_etas[0], "Container POD ETA"
+                for container in containers:
 
-                if eta == "Bilinmiyor":
+                    for event in container.get("Events", []):
 
-                    events = [
+                        if event.get("Description", "").strip().lower() == "import to consignee":
 
-                        event for container in bill_of_ladings[0].get("ContainersInfo", [])
+                            eta, kaynak = event.get("Date"), "Import to consignee"
 
-                        for event in container.get("Events", [])
+                            break
 
-                    ]
+            # Export Loaded on Vessel
 
-                    itd = next((e.get("Date") for e in events if e.get("Description", "").strip().lower() == "import to consignee"), None)
+            for container in containers:
 
-                    if itd:
+                for event in container.get("Events", []):
 
-                        eta, kaynak = itd, "Import to consignee"
+                    if event.get("Description", "").strip().lower() == "export loaded on vessel":
+
+                        export_date = event.get("Date")
+
+                        break
 
         except Exception as e:
 
@@ -235,51 +218,41 @@ async def get_eta_etd(bl: str, sem, browser):
 
             "Kaynak": kaynak,
 
-            "Export Loaded on Vessel Date": export_date
+            "Export Loaded on Vessel Date": export_date,
 
         }
 
-# === ASENKRON ANA İŞLEM ===
+async def main():
 
-async def run_all(bl_list):
+    print("📥 BL listesi yükleniyor...")
 
-    results = []
+    bl_list = read_bl_list()
 
-    sem = asyncio.Semaphore(8)
+    print(f"🔢 {len(bl_list)} konşimento bulundu.\n🚢 ETA verileri çekiliyor...")
 
-    async with async_playwright() as pw:
+    async with async_playwright() as p:
 
-        browser = await pw.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True)
 
-        tasks = [get_eta_etd(bl, sem, browser) for bl in bl_list]
+        context = await browser.new_context()
 
-        for coro in asyncio.as_completed(tasks):
+        sem = asyncio.Semaphore(5)
 
-            result = await coro
+        tasks = [get_eta_etd(bl, context, sem) for bl in bl_list]
 
-            results.append(result)
+        results = await asyncio.gather(*tasks)
 
         await browser.close()
 
-    return results
-
-# === ANA ===
-
-async def main():
-
-    print("\U0001F4E5 BL listesi yükleniyor...")
-
-    bl_list = load_bl_list()
-
-    print(f"\U0001F522 {len(bl_list)} konşimento bulundu.")
-
-    print("\U0001F6A2 ETA verileri çekiliyor...")
-
-    results = await run_all(bl_list)
+    print("📤 Veriler Google Sheets'e yazılıyor...")
 
     write_results_to_sheet(results)
+
+    print("✅ İşlem tamamlandı.")
 
 if __name__ == "__main__":
 
     asyncio.run(main())
+Shipping Container Tracking and Tracing | MSC
+MSC offers an online tracking and tracing system enabling containers to be tracked throughout the world. Find your freight fast. Contact our team today!
  
