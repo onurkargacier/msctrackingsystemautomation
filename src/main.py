@@ -1,7 +1,7 @@
 import asyncio
 import pandas as pd
 from datetime import datetime
-from msc_eta_scraper import get_eta_etd
+
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
