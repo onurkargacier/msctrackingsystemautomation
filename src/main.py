@@ -13,7 +13,8 @@ from send_email import send_email_with_attachment
 # === Google Sheets ayarları ===
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 RANGE_NAME = "Sayfa1!A2:A"
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
 
 # === Konşimentoları Google Sheets'ten oku ===
 def load_bl_list():
