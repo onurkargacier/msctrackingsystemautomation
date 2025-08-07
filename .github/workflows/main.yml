@@ -6,13 +6,13 @@ on:
 
   schedule:
 
-    - cron: '0 6 * * *' # Her gün saat 09:00'da (UTC 06:00 Türkiye 09:00)
+    - cron: '0 6 * * *'  # Her gün saat 09:00'da Türkiye saatiyle
 
 jobs:
 
   run-script:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Stabil ortam
 
     steps:
 
@@ -28,13 +28,33 @@ jobs:
 
           python-version: '3.10'
 
-      - name: Bağımlılıkları yükle
+      - name: Sistem bağımlılıklarını yükle
 
         run: |
 
           sudo apt-get update
 
-          sudo apt-get install -y libglib2.0-0 libnss3 libatk-bridge2.0-0 libcups2 libxss1 libasound2 libgbm-dev libgtk-3-0
+          sudo apt-get install -y \
+
+            libglib2.0-0 \
+
+            libnss3 \
+
+            libatk-bridge2.0-0 \
+
+            libcups2 \
+
+            libxss1 \
+
+            libgbm-dev \
+
+            libgtk-3-0 \
+
+            libasound2
+
+      - name: Python kütüphanelerini yükle
+
+        run: |
 
           python -m pip install --upgrade pip
 
