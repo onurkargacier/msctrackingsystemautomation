@@ -141,14 +141,13 @@ async def get_eta_etd(bl: str, sem, browser):
                 "__RequestVerificationToken": token,
 
             }
-
-            response = await browser.new_context().request.post(
-
+                context = await browser.new_context()
+                response = await context.request.post(
                 "https://www.msc.com/api/feature/tools/TrackingInfo",
-
-                data=json.dumps({"trackingNumber": bl, "trackingMode": "0"}),
-
-                headers=headers
+               data=json.dumps({"trackingNumber": bl, "trackingMode": "0"}),
+               headers=headers
+)
+        
 
             )
 
