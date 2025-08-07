@@ -6,7 +6,6 @@ import json
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from msc_eta_scraper import get_eta_etd
 
 # === Google Sheets API ayarları ===
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
