@@ -14,17 +14,17 @@ from googleapiclient.discovery import build
 
 from msc_eta_scraper import get_eta_etd
 
-# === Google Sheets Ayarları ===
+# === Google Sheets ayarları ===
 
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 
-READ_RANGE = "Sayfa1!A2:A"
+RANGE_READ = "Sayfa1!A2:A"
 
-WRITE_RANGE = "Sayfa1!B2"  # Sonuçların yazılacağı ilk hücre (örneğin B2)
+RANGE_WRITE = "Sayfa1!B2"  # Çıktının başlayacağı hücre
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]  # ✅ Yazma izni verildi
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# === Kimlik Doğrulama ===
+# === Kimlik doğrulama ===
 
 def get_credentials():
 
@@ -36,9 +36,9 @@ def get_credentials():
 
     else:
 
-        return Credentials.from_service_account_file("google_credentials.json", scopes=SCOPES)
+        raise ValueError("GOOGLE_CREDENTIALS ortam değişkeni tanımlı değil.")
 
-# === Konşimentoları Oku ===
+# === Google Sheets'ten konşimento listesini oku ===
 
 def load_bl_list():
 
@@ -48,15 +48,15 @@ def load_bl_list():
 
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=READ_RANGE).execute()
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_READ).execute()
 
     values = result.get("values", [])
 
     return [row[0] for row in values if row]
 
-# === Sonuçları Google Sheets'e Yaz ===
+# === Google Sheets'e veri yaz ===
 
-def write_to_google_sheets(data):
+def write_to_sheets(data):
 
     creds = get_credentials()
 
@@ -64,33 +64,27 @@ def write_to_google_sheets(data):
 
     sheet = service.spreadsheets()
 
-    # Sadece gerekli sütunları alıyoruz
+    df = pd.DataFrame(data)
 
-    values = [
+    df["Çekildiği Tarih"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        [row["ETA (Date)"], row["Kaynak"], row["Export Loaded on Vessel Date"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-
-        for row in data
-
-    ]
-
-    body = {"values": values}
+    values = [df.columns.tolist()] + df.values.tolist()  # Başlık + veri
 
     sheet.values().update(
 
         spreadsheetId=SPREADSHEET_ID,
 
-        range=WRITE_RANGE,
+        range=RANGE_WRITE,
 
         valueInputOption="RAW",
 
-        body=body
+        body={"values": values}
 
     ).execute()
 
-    print(f"✅ {len(values)} satır Google Sheets'e yazıldı.")
+    print("📤 Veriler Google Sheets'e yazıldı.")
 
-# === Asenkron scraping işlemi ===
+# === Asenkron scraping ===
 
 async def run_all(bl_list):
 
@@ -108,37 +102,23 @@ async def run_all(bl_list):
 
     return results
 
-# === Excel'e de opsiyonel olarak yaz
-
-def save_to_excel(data, filename="guncel_eta.xlsx"):
-
-    df = pd.DataFrame(data)
-
-    df["Çekildiği Tarih"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    df.to_excel(filename, index=False)
-
-    print(f"📄 Excel dosyası oluşturuldu: {filename}")
-
-# === Ana Fonksiyon
+# === Ana fonksiyon ===
 
 async def main():
 
-    print("📥 BL listesi yükleniyor...")
+    print("\U0001F4E5 BL listesi yükleniyor...")
 
     bl_list = load_bl_list()
 
-    print(f"🔢 {len(bl_list)} konşimento bulundu.")
+    print(f"\U0001F522 {len(bl_list)} konşimento bulundu.")
 
-    print("🚢 ETA verileri çekiliyor...")
+    print("\U0001F6A2 ETA verileri çekiliyor...")
 
     results = await run_all(bl_list)
 
-    save_to_excel(results)  # Opsiyonel
+    write_to_sheets(results)
 
-    write_to_google_sheets(results)
-
-# === Çalıştır
+# === Çalıştır ===
 
 if __name__ == "__main__":
 
