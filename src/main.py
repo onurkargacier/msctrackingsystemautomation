@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from msc_eta_scraper import get_eta_etd
-from send_email import send_email_with_attachment  # ✅ Mail fonksiyonunu dahil ettik
+from send_email import send_email_with_attachment
 
 # === Google Sheets ayarları ===
 SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
@@ -57,11 +57,22 @@ async def main():
 
     save_to_excel(results)
 
+    # ✅ Ortam değişkenlerini al
+    email_user = os.getenv("onur.kargacier@temsa.com")
+    email_pass = os.getenv("Pbmok-549")
+    email_recv = os.getenv("onur.kargacier@temsa.com")
+
+    if not all([email_user, email_pass, email_recv]):
+        raise ValueError("Email bilgilerinden biri veya birkaçı eksik: EMAIL_USER, EMAIL_PASSWORD, EMAIL_RECEIVER")
+
     # ✅ Excel oluşturulduktan sonra mail gönder
     send_email_with_attachment(
         subject="Günlük MSC ETA Raporu",
         body="Merhaba,\n\nEk'te günlük MSC ETA raporunuzu bulabilirsiniz.\n\nİyi çalışmalar.",
-        filename="guncel_eta.xlsx"
+        filename="guncel_eta.xlsx",
+        user=email_user,
+        password=email_pass,
+        to=email_recv
     )
 
 # === Çalıştır
