@@ -20,7 +20,7 @@ SPREADSHEET_ID = "1N1uiGC2f-XZwiobyJzPFuTa67VRsQ4ALyjuIoMpW-Io"
 
 READ_RANGE = "Sayfa1!A2:A"
 
-WRITE_RANGE = "Sayfa1!C2"  # Sonuçların yazılacağı ilk hücre (örneğin C2)
+WRITE_RANGE = "Sayfa1!B2"  # Sonuçların yazılacağı ilk hücre (örneğin B2)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]  # ✅ Yazma izni verildi
 
