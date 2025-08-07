@@ -209,6 +209,3 @@ async def get_eta_etd(bl: str, sem: asyncio.Semaphore) -> dict:
             "Export Loaded on Vessel Date": export_date
 
         }
-Shipping Container Tracking and Tracing | MSC
-MSC offers an online tracking and tracing system enabling containers to be tracked throughout the world. Find your freight fast. Contact our team today!
- 
