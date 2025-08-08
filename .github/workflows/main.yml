@@ -3,17 +3,8 @@ name: MSC ETA Tracking Automation
 on:
   workflow_dispatch:
   schedule:
-    # TR saatleri: 08:00–17:00  =>  UTC: 05:00–14:00
-    - cron: '0 5 * * *'   # 08:00 TR
-    - cron: '0 6 * * *'   # 09:00 TR
-    - cron: '0 7 * * *'   # 10:00 TR
-    - cron: '0 8 * * *'   # 11:00 TR
-    - cron: '0 9 * * *'   # 12:00 TR
-    - cron: '0 10 * * *'  # 13:00 TR
-    - cron: '0 11 * * *'  # 14:00 TR
-    - cron: '0 12 * * *'  # 15:00 TR
-    - cron: '0 13 * * *'  # 16:00 TR
-    - cron: '0 14 * * *'  # 17:00 TR
+    # TR 08:00–17:00  =>  UTC 05–14 her saat başı
+    - cron: '0 5-14 * * *'
 
 jobs:
   run-script:
@@ -26,7 +17,7 @@ jobs:
       cancel-in-progress: false
 
     env:
-      # İsteğe göre ayarla: Access Denied riski varsa 4–8 arası iyi
+      # Erişim kısıtı riski varsa 4–8 arası iyi
       CONCURRENCY: "8"
       # Event etiketlerini Log sheet’te görmek istersen 1 yap
       DEBUG_EVENTS: "0"
@@ -56,7 +47,6 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
           set -euo pipefail
-          # Güvenli yaz (kaçış karakteri bozulmasın)
           printf '%s' "${GOOGLE_CREDENTIALS}" > credentials.json
 
       - name: Sistem bağımlılıklarını kur
