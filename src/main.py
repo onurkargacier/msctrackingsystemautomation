@@ -51,8 +51,11 @@ def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=title, rows=2000, cols=10)
         if headers:
-            ws.update("A1:{}1".format(chr(ord('A') + len(headers) - 1)), [headers])
+            end_col = chr(ord('A') + len(headers) - 1)
+            # Yeni imza: values önce, range_name adıyla
+            ws.update([headers], range_name=f"A1:{end_col}1")
     return ws
+
 
 def read_bl_list(sh) -> List[str]:
     # 1) Input!A
@@ -105,9 +108,13 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 def write_results(ws_data, rows: List[List[Any]]):
     """Data sayfasına başlık + verileri tamamen üzerine yazar."""
     ws_data.clear()
-    ws_data.update("A1:{}1".format(chr(ord('A') + len(DATA_HEADERS) - 1)), [DATA_HEADERS])
+    end_col = chr(ord('A') + len(DATA_HEADERS) - 1)
+    # Başlık
+    ws_data.update([DATA_HEADERS], range_name=f"A1:{end_col}1")
+    # Satırlar
     if rows:
-        ws_data.update(f"A2:{chr(ord('A') + len(DATA_HEADERS) - 1)}{len(rows) + 1}", rows)
+        ws_data.update(rows, range_name=f"A2:{end_col}{len(rows) + 1}")
+)
 
 def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
     """ETA değişen satırların B sütununu pastel kırmızıya boya."""
