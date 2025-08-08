@@ -18,6 +18,19 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Preflight secrets check
+        run: |
+          : "${GOOGLE_CREDENTIALS:?GOOGLE_CREDENTIALS missing. Add it in Actions secrets.}"
+          echo "GOOGLE_CREDENTIALS OK"
+          if [ -z "${SPREADSHEET_ID:-}" ]; then
+            echo "SPREADSHEET_ID secret yok; koddaki default ID kullanılacak."
+          else
+            echo "SPREADSHEET_ID secret var."
+          fi
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+
       - name: Sistem bağımlılıklarını kur
         run: |
           set -euo pipefail
