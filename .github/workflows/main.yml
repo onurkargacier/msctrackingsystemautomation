@@ -1,74 +1,45 @@
 name: MSC ETA Tracking Automation
 
 on:
-
   workflow_dispatch:
-
   schedule:
-
-    - cron: '0 6 * * *'  # Her gün saat 09:00'da Türkiye saatiyle
+    - cron: '0 6 * * *'  # Her gün 09:00 TR (UTC+3)
 
 jobs:
-
   run-script:
-
-    runs-on: ubuntu-22.04  # Stabil ortam
+    runs-on: ubuntu-22.04
 
     steps:
+      - name: Reposu klonla
+        uses: actions/checkout@v4
 
-      - name: Reposoyu klonla
-
-        uses: actions/checkout@v3
-
-      - name: Python ortamını kur
-
-        uses: actions/setup-python@v4
-
+      - name: Python kur
+        uses: actions/setup-python@v5
         with:
-
           python-version: '3.10'
 
-      - name: Sistem bağımlılıklarını yükle
-
+      - name: Sistem bağımlılıklarını kur
         run: |
-
+          set -euo pipefail
           sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-0 libnss3 libatk-bridge2.0-0 libcups2 libxss1 \
+            libgbm1 libgtk-3-0 libasound2 libx11-6 libxcb1 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libdbus-1-3 libxkbcommon0 \
+            libatspi2.0-0 libdrm2 libpango-1.0-0 libcairo2 ca-certificates \
+            fonts-liberation curl unzip
+          sudo rm -rf /var/lib/apt/lists/*
 
-          sudo apt-get install -y \
-
-            libglib2.0-0 \
-
-            libnss3 \
-
-            libatk-bridge2.0-0 \
-
-            libcups2 \
-
-            libxss1 \
-
-            libgbm-dev \
-
-            libgtk-3-0 \
-
-            libasound2
-
-      - name: Python kütüphanelerini yükle
-
+      - name: Python kütüphanelerini kur
         run: |
-
           python -m pip install --upgrade pip
-
-          pip install pandas google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 playwright
-
-          playwright install chromium
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
 
       - name: Scripti çalıştır
-
-        run: python src/main.py
-
         env:
-
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
- 
+        run: |
+          python src/main.py
