@@ -3,9 +3,17 @@ name: MSC ETA Tracking Automation
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *'     # 08:00 TR
-    - cron: '30 9 * * *'    # 12:30 TR
-    - cron: '0 13 * * *'    # 16:00 TR
+    - cron: '0 5 * * *'   # 08:00 TR
+    - cron: '0 6 * * *'   # 09:00 TR
+    - cron: '0 7 * * *'   # 10:00 TR
+    - cron: '0 8 * * *'   # 11:00 TR
+    - cron: '0 9 * * *'   # 12:00 TR
+    - cron: '0 10 * * *'  # 13:00 TR
+    - cron: '0 11 * * *'  # 14:00 TR
+    - cron: '0 12 * * *'  # 15:00 TR
+    - cron: '0 13 * * *'  # 16:00 TR
+    - cron: '0 14 * * *'  # 17:00 TR
+
 
 
 jobs:
