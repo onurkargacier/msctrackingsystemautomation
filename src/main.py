@@ -6,15 +6,15 @@ from datetime import datetime
 
 from typing import List, Dict, Any, Optional
 
+from zoneinfo import ZoneInfo  # TR saati için
+
 import gspread
 
 from google.oauth2.service_account import Credentials
 
-from msc_eta_scraper import get_eta_etd, init_browser
-
-# === Faz 2 için biçimlendirme ===
-
 from gspread_formatting import format_cell_ranges, CellFormat, Color
+
+from msc_eta_scraper import get_eta_etd, init_browser
 
 # =========================
 
@@ -38,9 +38,9 @@ DATA_HEADERS = [
 
     "Kaynak",
 
-    "Export Loaded on Vessel Date",
+    "ETD",
 
-    "Çekim Zamanı (UTC)",
+    "Çekim Zamanı (TR)",
 
     "Not"
 
@@ -140,45 +140,9 @@ def read_bl_list(sh) -> List[str]:
 
     return [v.strip() for v in col[1:] if v and v.strip()]
 
-def _parse_date(date_str: str) -> Optional[datetime]:
-
-    if not date_str or date_str.lower() == "bilinmiyor":
-
-        return None
-
-    s = date_str.strip()
-
-    # ISO benzeri
-
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y", "%d.%m.%Y", "%Y/%m/%d"):
-
-        try:
-
-            dt = datetime.strptime(s[:19], fmt) if "T" in s else datetime.strptime(s, fmt)
-
-            # Sadece gün hassasiyeti kullanacağız
-
-            return datetime(dt.year, dt.month, dt.day)
-
-        except ValueError:
-
-            continue
-
-    # Son çare: sadece YYYY-MM-DD parçala
-
-    try:
-
-        y, m, d = s[:10].split("-")
-
-        return datetime(int(y), int(m), int(d))
-
-    except Exception:
-
-        return None
-
 def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
-    """Data sayfasındaki önceki ETA/Export değerlerini haritalar."""
+    """Data sayfasındaki önceki ETA/ETD değerlerini haritalar."""
 
     rows = ws_data.get_all_values()
 
@@ -194,7 +158,7 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
     idx_eta = header.index("ETA (Date)") if "ETA (Date)" in header else 1
 
-    idx_exp = header.index("Export Loaded on Vessel Date") if "Export Loaded on Vessel Date" in header else 3
+    idx_etd = header.index("ETD") if "ETD" in header else 3
 
     for r in rows[1:]:
 
@@ -210,9 +174,9 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
         eta_old = r[idx_eta] if len(r) > idx_eta else ""
 
-        exp_old = r[idx_exp] if len(r) > idx_exp else ""
+        etd_old = r[idx_etd] if len(r) > idx_etd else ""
 
-        prev[bl] = {"ETA": eta_old, "Export": exp_old}
+        prev[bl] = {"ETA": eta_old, "ETD": etd_old}
 
     return prev
 
@@ -230,27 +194,13 @@ def write_results(ws_data, rows: List[List[Any]]):
 
 def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
 
-    """
-
-    ETA değişen satırların B sütununu pastel kırmızıya boya.
-
-    changed_rows_indices: 0-based index (rows listesinde) değil; sheet'te satır numarası.
-
-    Buraya 2..N aralığındaki gerçek satır numaraları gönderilmeli.
-
-    """
+    """ETA değişen satırların B sütununu pastel kırmızıya boya."""
 
     if not changed_rows_indices:
 
         return
 
-    ranges = []
-
-    for r in changed_rows_indices:
-
-        # B sütunu (ETA) -> B{r}:B{r}
-
-        ranges.append((f"B{r}:B{r}", CellFormat(backgroundColor=PASTEL_RED)))
+    ranges = [(f"B{r}:B{r}", CellFormat(backgroundColor=PASTEL_RED)) for r in changed_rows_indices]
 
     format_cell_ranges(ws_data, ranges)
 
@@ -280,17 +230,7 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
 
                 print(f"[{bl}] ⚠️ Hata (üst seviye): {e}")
 
-                return {
-
-                    "konşimento": bl,
-
-                    "ETA (Date)": "Bilinmiyor",
-
-                    "Kaynak": "Bilinmiyor",
-
-                    "Export Loaded on Vessel Date": "Bilinmiyor"
-
-                }
+                return {"konşimento": bl, "ETA (Date)": "Bilinmiyor", "Kaynak": "Bilinmiyor", "ETD": "Bilinmiyor"}
 
         tasks = [task(bl) for bl in bl_list]
 
@@ -318,31 +258,25 @@ def to_rows_and_changes(results: List[Dict[str, Any]],
 
     """
 
-    now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).strftime("%Y-%m-%d %H:%M:%S")
 
     rows = []
 
     changed_row_numbers: List[int] = []
 
-    for i, r in enumerate(results, start=2):  # sheet row index (A2 ilk satır)
+    for i, r in enumerate(results, start=2):  # sheet row index
 
         bl = r.get("konşimento", "")
 
         eta_new = (r.get("ETA (Date)", "") or "").strip()
 
-        exp_new = (r.get("Export Loaded on Vessel Date", "") or "").strip()
+        etd_new = (r.get("ETD", "") or "").strip()
 
         eta_old = prev_map.get(bl, {}).get("ETA", "")
 
-        exp_old = prev_map.get(bl, {}).get("Export", "")
-
         note = ""
 
-        # Sadece ETA değişiminde görsel işaretleme ve not
-
         if eta_new and eta_new.lower() != "bilinmiyor" and eta_new != eta_old:
-
-            # Not metni
 
             if eta_old:
 
@@ -351,8 +285,6 @@ def to_rows_and_changes(results: List[Dict[str, Any]],
             else:
 
                 note = f"Tarih bilginiz değişti: (yok) → {eta_new}"
-
-            # Boyama için bu satırı işaretle
 
             changed_row_numbers.append(i)
 
@@ -364,9 +296,9 @@ def to_rows_and_changes(results: List[Dict[str, Any]],
 
             r.get("Kaynak", ""),
 
-            exp_new,
+            etd_new,       # ETD
 
-            now_utc,
+            now_tr,        # Çekim Zamanı (TR)
 
             note,
 
@@ -380,11 +312,9 @@ def main():
 
     sh = open_sheet()
 
-    # Sayfaları hazırla
+    # Sayfayı hazırla ve önceki değerleri oku
 
     ws_data = ensure_worksheet(sh, SHEET_DATA, headers=DATA_HEADERS)
-
-    # Önceki değerleri oku
 
     prev_map = read_previous_map(ws_data)
 
@@ -404,11 +334,11 @@ def main():
 
     results = asyncio.run(run_once(bl_list))
 
-    # Satırları hazırla ve değişenleri tespit et
+    # Satırları hazırla + değişim tespiti
 
     rows, changed_row_numbers = to_rows_and_changes(results, prev_map)
 
-    # Yaz ve sonra boyama uygula
+    # Yaz ve boyama uygula
 
     write_results(ws_data, rows)
 
