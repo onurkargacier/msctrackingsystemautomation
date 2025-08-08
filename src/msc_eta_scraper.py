@@ -13,10 +13,6 @@ def normalize(s: str) -> str:
 
 
 async def _get_token_with_retry(page) -> Optional[str]:
-    """
-    MSC sayfasındaki __RequestVerificationToken değerini almaya çalışır.
-    Gerekirse tek kez reload eder.
-    """
     try:
         await page.wait_for_selector('input[name="__RequestVerificationToken"]', timeout=5_000)
     except PWTimeout:
@@ -30,11 +26,7 @@ async def _get_token_with_retry(page) -> Optional[str]:
 
 
 async def _post_with_retries(context: BrowserContext, url: str, json_payload: dict, headers: dict, max_retries: int = 3):
-    """
-    Playwright APIRequestContext json= desteklemez; body string gönderiyoruz.
-    429/5xx durumlarında üssel backoff ile tekrar dener.
-    """
-    body = json.dumps(json_payload)
+    body = json.dumps(json_payload)  # Playwright'ta json= yok; body string gönderiyoruz
     backoff = 0.7
     last_exc = None
     for attempt in range(max_retries + 1):
@@ -44,7 +36,6 @@ async def _post_with_retries(context: BrowserContext, url: str, json_payload: di
                 return resp
             if resp.status in (429, 500, 502, 503, 504):
                 raise RuntimeError(f"HTTP {resp.status}")
-            # Diğer statuslar retry dışı; direkt döndür
             return resp
         except Exception as e:
             last_exc = e
@@ -56,14 +47,6 @@ async def _post_with_retries(context: BrowserContext, url: str, json_payload: di
 
 
 async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) -> Dict[str, Any]:
-    """
-    ETA öncelik sırası:
-      1) Events -> "POD ETA"
-      2) GeneralTrackingInfo -> "FinalPodEtaDate"
-      3) Container -> "PodEtaDate"
-      4) Events -> "Import to consignee" (fallback)
-    Ek: "Export loaded on vessel" (ETD benzeri bilgi) ayrıştırılır.
-    """
     eta = "Bilinmiyor"
     kaynak = "Bilinmiyor"
     export_date = "Bilinmiyor"
@@ -72,7 +55,7 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
         page = await context.new_page()
         page.set_default_navigation_timeout(120_000)
         page.set_default_timeout(20_000)
-        # Gereksiz kaynakları blokla (hız)
+        # gereksiz dosyaları kes (hız)
         await page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
 
         try:
@@ -90,7 +73,7 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
             cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
             token = await _get_token_with_retry(page)
 
-            # 2) API çağrısı (cookie+token header’da)
+            # 2) API çağrısı
             api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
             payload = {"trackingNumber": bl, "trackingMode": "0"}
             headers = {
@@ -107,7 +90,7 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
 
             resp = await _post_with_retries(context, api_url, payload, headers, max_retries=3)
 
-            # 403 geldiyse tek sefer token tazele ve tekrar dene
+            # 403 geldiyse: token tazele, bir kez daha dene
             if resp.status == 403:
                 token = await _get_token_with_retry(page)
                 if token:
@@ -128,13 +111,13 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
             general_info = bill.get("GeneralTrackingInfo", {}) or {}
             containers = bill.get("ContainersInfo", []) or []
 
-            # Export Loaded on Vessel (ETD benzeri)
+            # Export Loaded on Vessel
             for container in containers:
                 for event in container.get("Events", []) or []:
                     if normalize(event.get("Description")) == "export loaded on vessel":
                         export_date = event.get("Date") or export_date
 
-            # 1) POD ETA (Events)
+            # 1) POD ETA
             found = False
             for container in containers:
                 for event in container.get("Events", []) or []:
@@ -159,7 +142,7 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
                         found = True
                         break
 
-            # 4) Import to consignee (fallback)
+            # 4) Import to consignee
             if not found:
                 for container in containers:
                     for event in container.get("Events", []) or []:
