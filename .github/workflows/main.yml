@@ -29,27 +29,24 @@ jobs:
           python-version: '3.10'
 
       - name: Preflight secrets check
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           set -euo pipefail
           : "${GOOGLE_CREDENTIALS:?GOOGLE_CREDENTIALS missing. Add it in Actions secrets.}"
           if [ -z "${SPREADSHEET_ID:-}" ]; then
-            echo "SPREADSHEET_ID yok; koddaki FALLBACK kullanılmayacak. Lütfen secrets'a ekleyin."
+            echo "SPREADSHEET_ID yok; lütfen repo secrets'a ekleyin."
           else
             echo "SPREADSHEET_ID mevcut."
           fi
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
 
       - name: credentials.json oluştur
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
           set -euo pipefail
           echo "${GOOGLE_CREDENTIALS}" > credentials.json
-          python - <<'PY'
-import json; j=json.load(open("credentials.json")); print("Service account:", j.get("client_email","<unknown>"))
-PY
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Sistem bağımlılıklarını kur
         run: |
