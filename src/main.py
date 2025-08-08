@@ -1,230 +1,189 @@
-import asyncio
 import os
-import json
+import asyncio
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 import gspread
 from google.oauth2.service_account import Credentials
-from gspread_formatting import CellFormat, Color, format_cell_range
 
-from playwright.async_api import async_playwright
-from msc_eta_scraper import get_eta_etd
+from msc_eta_scraper import get_eta_etd, init_browser
+
 
 # =========================
-# KONFİG
+# Konfig
 # =========================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SHEET_ID_ENV = "SPREADSHEET_ID"
 
-DATA_SHEET_TITLE = "Data"
-LOG_SHEET_TITLE = "Log"
+SHEET_INPUT = "Input"
+SHEET_DATA = "Data"
 
-# Renkler (pastel)
-PASTEL_RED = Color(1.0, 0.85, 0.85)    # gecikme (+ gün)
-PASTEL_GREEN = Color(0.85, 1.0, 0.85)  # erken varış (- gün)
-WHITE = Color(1.0, 1.0, 1.0)
+DATA_HEADERS = [
+    "Konşimento",
+    "ETA (Date)",
+    "Kaynak",
+    "Export Loaded on Vessel Date",
+    "Çekim Zamanı (UTC)"
+]
 
-DATA_HEADERS = ["Konşimento", "ETA (Date)", "Kaynak", "Export Loaded on Vessel Date", "Değişim (gün)", "Not"]
+DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "8"))
+
 
 # =========================
-# GOOGLE SHEETS
+# Google Sheets yardımcıları
 # =========================
-def gsheet_open():
-    # credentials.json workflow adımında oluşturuluyor
+def open_sheet():
+    """
+    credentials.json (workflow adımında oluşturuluyor) ile auth olur
+    ve SPREADSHEET_ID üzerinden Google Sheet'i açar.
+    """
+    sheet_id = os.environ.get(SHEET_ID_ENV)
+    if not sheet_id:
+        raise RuntimeError("SPREADSHEET_ID ortam değişkeni yok.")
+
     creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
     gc = gspread.authorize(creds)
-    sh = gc.open_by_key(os.environ["SPREADSHEET_ID"])
+    sh = gc.open_by_key(sheet_id)
     return sh
 
+
 def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
+    """
+    İstenen adıyla worksheet varsa döndürür, yoksa oluşturur.
+    İlk satıra headers yazmak opsiyoneldir.
+    """
     try:
         ws = sh.worksheet(title)
     except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=title, rows=1000, cols=10)
+        ws = sh.add_worksheet(title=title, rows=2000, cols=10)
         if headers:
-            ws.update(values=[headers], range_name=f"A1:{chr(ord('A') + len(headers) - 1)}1")
+            ws.update("A1:{}1".format(chr(ord('A') + len(headers) - 1)), [headers])
     return ws
 
-def read_previous_data(ws) -> Dict[str, Dict[str, Any]]:
-    vals = ws.get_all_values()
-    if not vals:
-        return {}
-    header = vals[0]
-    idx = {h: i for i, h in enumerate(header)}
-    result = {}
-    for row in vals[1:]:
-        if not row:
-            continue
-        bl = row[idx.get("Konşimento", 0)].strip() if len(row) > idx.get("Konşimento", 0) else ""
-        if not bl:
-            continue
-        row_dict = {}
-        for k, i in idx.items():
-            row_dict[k] = row[i] if i < len(row) else ""
-        result[bl] = row_dict
-    return result
 
-def read_bl_list_input(sh) -> List[str]:
-    # Öncelik: Input!A, yoksa Data!A, yoksa ilk sayfa A
+def read_bl_list(sh) -> List[str]:
+    """
+    BL listesini öncelikle Input!A sütunundan (başlığı atlayarak),
+    yoksa Data!A sütunundan (başlığı atlayarak) okur.
+    Hiçbiri yoksa ilk sayfadaki A sütunundan dener.
+    """
+    # 1) Input!A
     try:
-        ws_input = sh.worksheet("Input")
-        vals = ws_input.col_values(1)[1:]
-        bls = [v.strip() for v in vals if v and v.strip()]
-        if bls: return bls
+        ws_in = sh.worksheet(SHEET_INPUT)
+        col = ws_in.col_values(1)
+        if col:
+            vals = [v.strip() for v in col[1:] if v and v.strip()]
+            if vals:
+                return vals
     except gspread.WorksheetNotFound:
         pass
+
+    # 2) Data!A
     try:
-        ws_data = sh.worksheet(DATA_SHEET_TITLE)
-        vals = ws_data.col_values(1)[1:]
-        bls = [v.strip() for v in vals if v and v.strip()]
-        if bls: return bls
+        ws_data = sh.worksheet(SHEET_DATA)
+        col = ws_data.col_values(1)
+        if col:
+            vals = [v.strip() for v in col[1:] if v and v.strip()]
+            if vals:
+                return vals
     except gspread.WorksheetNotFound:
         pass
+
+    # 3) İlk sheet A
     ws0 = sh.get_worksheet(0)
-    vals = ws0.col_values(1)[1:]
-    return [v.strip() for v in vals if v and v.strip()]
+    col = ws0.col_values(1)
+    return [v.strip() for v in col[1:] if v and v.strip()]
 
-def parse_date_safe(s: str) -> Optional[datetime]:
-    if not s or s.lower() == "bilinmiyor": return None
-    s = s.strip()
-    fmts = ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y", "%d.%m.%Y", "%m/%d/%Y")
-    for f in fmts:
-        try:
-            return datetime.strptime(s[:19], f)
-        except Exception:
-            pass
-    try:
-        # ISO son çare
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
-    except Exception:
-        return None
 
-def clear_area_colors(ws, start_row: int, end_row: int):
-    if end_row < start_row:
-        return
-    fmt_white = CellFormat(backgroundColor=WHITE)
-    # B ve F sütunları (ETA ve Not) beyaza
-    format_cell_range(ws, f"B{start_row}:B{end_row}", fmt_white)
-    format_cell_range(ws, f"F{start_row}:F{end_row}", fmt_white)
+def write_results(ws_data, rows: List[List[Any]]):
+    """
+    Data sayfasına başlık + verileri tek seferde yazar (tamamen üzerine yazar).
+    rows: header hariç satırlar
+    """
+    ws_data.clear()
+    ws_data.update("A1:{}1".format(chr(ord('A') + len(DATA_HEADERS) - 1)), [DATA_HEADERS])
+    if rows:
+        ws_data.update(f"A2:{chr(ord('A') + len(DATA_HEADERS) - 1)}{len(rows) + 1}", rows)
 
-def log_error(ws_log, bl: str, error_msg: str, attempt: int):
-    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    ws_log.append_row([ts, bl, error_msg, attempt], value_input_option="RAW")
 
 # =========================
-# ANA AKIŞ
+# İş akışı
 # =========================
-async def run_once(bl_list: List[str], prev_map: Dict[str, Dict[str, Any]], ws_data, ws_log):
+async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
+    """
+    BL listesi için Playwright tarayıcı başlatır, görevleri paralel çalıştırır ve sonuçları döndürür.
+    """
     results: List[Dict[str, Any]] = []
+    browser, pw = await init_browser()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--start-maximized",
-                "--no-sandbox",
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
-            ]
-        )
-        context = await browser.new_context(
-            viewport={"width": 1366, "height": 768},
-            locale="en-US",
-            timezone_id="Europe/Istanbul",
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36")
-        )
-
-        sem = asyncio.Semaphore(8)
+    try:
+        sem = asyncio.Semaphore(DEFAULT_CONCURRENCY)
 
         async def task(bl: str):
-            attempt = 0
-            while attempt < 2:
-                attempt += 1
-                try:
-                    return await get_eta_etd(bl, context, sem)
-                except Exception as e:
-                    log_error(ws_log, bl, f"{type(e).__name__}: {e}", attempt)
-                    if attempt >= 2:
-                        return {
-                            "Konşimento": bl,
-                            "ETA (Date)": "Bilinmiyor",
-                            "Kaynak": "Bilinmiyor",
-                            "Export Loaded on Vessel Date": "Bilinmiyor",
-                        }
+            try:
+                return await get_eta_etd(bl, browser, sem)
+            except Exception as e:
+                print(f"[{bl}] ⚠️ Hata (üst seviye): {e}")
+                return {
+                    "konşimento": bl,
+                    "ETA (Date)": "Bilinmiyor",
+                    "Kaynak": "Bilinmiyor",
+                    "Export Loaded on Vessel Date": "Bilinmiyor"
+                }
 
-        results = await asyncio.gather(*[task(bl) for bl in bl_list])
+        # Asenkron görevleri başlat
+        tasks = [task(bl) for bl in bl_list]
+        results = await asyncio.gather(*tasks)
 
-        await context.close()
+    finally:
         await browser.close()
-
-    # === Data yaz + renklendir ===
-    rows_out: List[List[Any]] = [DATA_HEADERS]
-    rows_to_color: List[Tuple[int, str]] = []  # (row_index_1based, "red"/"green")
-
-    for r in results:
-        bl = r.get("Konşimento", "")
-        eta_new = (r.get("ETA (Date)") or "").strip()
-        kay = r.get("Kaynak", "") or ""
-        exp = r.get("Export Loaded on Vessel Date", "") or ""
-
-        eta_old = (prev_map.get(bl) or {}).get("ETA (Date)", "").strip()
-        delta_days_str = ""
-        note = ""
-
-        if eta_old and eta_new and eta_old.lower() != "bilinmiyor" and eta_new.lower() != "bilinmiyor" and eta_old != eta_new:
-            d_old = parse_date_safe(eta_old)
-            d_new = parse_date_safe(eta_new)
-            if d_old and d_new:
-                delta = (d_new - d_old).days
-                sign = "+" if delta > 0 else ""
-                delta_days_str = f"{sign}{delta} gün"
-                note = f"Tarih bilginiz değişti: {eta_old} → {eta_new}"
-                color_key = "red" if delta > 0 else ("green" if delta < 0 else None)
-                if color_key:
-                    row_index_1based = len(rows_out) + 1  # eklenecek satırın index'i
-                    rows_to_color.append((row_index_1based, color_key))
-
-        rows_out.append([bl, eta_new, kay, exp, delta_days_str, note])
-
-    # Tam sayfayı üzerine yaz
-    ws_data.clear()
-    ws_data.update(values=[DATA_HEADERS], range_name="A1:F1")
-    if len(rows_out) > 1:
-        ws_data.update(values=rows_out[1:], range_name=f"A2:F{len(rows_out)}")
-
-    # Önce alanı beyaza çek, sonra değişenleri boya
-    total_rows = len(rows_out) - 1
-    if total_rows > 0:
-        clear_area_colors(ws_data, 2, total_rows + 1)
-    for row_idx, color_key in rows_to_color:
-        fmt = CellFormat(backgroundColor=(PASTEL_RED if color_key == "red" else PASTEL_GREEN))
-        format_cell_range(ws_data, f"B{row_idx}:B{row_idx}", fmt)
-        format_cell_range(ws_data, f"F{row_idx}:F{row_idx}", fmt)
+        await pw.stop()
 
     return results
 
-def main():
-    print(f"📄 Spreadsheet ID: {os.environ.get('SPREADSHEET_ID')}")
-    sh = gsheet_open()
 
-    # Sayfalar
-    ws_data = ensure_worksheet(sh, DATA_SHEET_TITLE, DATA_HEADERS)
-    ws_log = ensure_worksheet(sh, LOG_SHEET_TITLE, headers=["Timestamp (UTC)", "BL", "Error", "Attempt"])
+def to_rows(results: List[Dict[str, Any]]) -> List[List[Any]]:
+    """
+    Sonuçları Data sheet’e yazılacak satır listesine dönüştürür.
+    """
+    now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    rows = []
+    for r in results:
+        rows.append([
+            r.get("konşimento", ""),
+            r.get("ETA (Date)", ""),
+            r.get("Kaynak", ""),
+            r.get("Export Loaded on Vessel Date", ""),
+            now_utc
+        ])
+    return rows
+
+
+def main():
+    print(f"📄 Spreadsheet ID: {os.environ.get(SHEET_ID_ENV, '<yok>')}")
+    sh = open_sheet()
+
+    # Sayfaları hazırla
+    ws_data = ensure_worksheet(sh, SHEET_DATA, headers=DATA_HEADERS)
+    # Input sheet yoksa oluşturmak istersen (opsiyonel):
+    # ensure_worksheet(sh, SHEET_INPUT, headers=["Konşimento"])
 
     # BL listesini oku
-    bl_list = read_bl_list_input(sh)
+    bl_list = read_bl_list(sh)
     if not bl_list:
         print("⚠️ BL listesi boş. Çıkılıyor.")
         return
     print(f"🔢 {len(bl_list)} konşimento bulundu. İşleniyor…")
 
-    prev_map = read_previous_data(ws_data)
+    # Asenkron çekim
+    results = asyncio.run(run_once(bl_list))
 
-    asyncio.run(run_once(bl_list, prev_map, ws_data, ws_log))
+    # Google Sheets'e yaz
+    rows = to_rows(results)
+    write_results(ws_data, rows)
+
     print("✅ Tamamlandı.")
+
 
 if __name__ == "__main__":
     main()
