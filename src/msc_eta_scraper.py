@@ -126,31 +126,29 @@ async def _try_network_capture(page: Page, container: Page, bl: str):
         except Exception:
             return False
 
-    # Önce Enter
+    # Önce Enter ile dener
     wait_task = asyncio.create_task(page.wait_for_response(_is_trackinginfo, timeout=20000))
     await container.keyboard.press("Enter")
     try:
         resp = await wait_task
-        # JSON dene
         try:
             data = await resp.json()
             if _looks_like_json(data):
                 print(f"[{bl}] ✅ Network JSON alındı (Enter).")
                 return data
-            else:
-                # JSON değilse text kontrol et
-                txt = await resp.text()
-                if _looks_like_html(txt):
-                    print(f"[{bl}] ❌ Network yanıtı HTML (Enter).")
-                    return None
-                try:
-                    data2 = json.loads(txt)
-                    if _looks_like_json(data2):
-                        print(f"[{bl}] ✅ Network JSON (text->json) (Enter).")
-                        return data2
-                except Exception:
-                    pass
+            # JSON değilse text kontrol et
+            txt = await resp.text()
+            if _looks_like_html(txt):
+                print(f"[{bl}] ❌ Network yanıtı HTML (Enter).")
                 return None
+            try:
+                data2 = json.loads(txt)
+                if _looks_like_json(data2):
+                    print(f"[{bl}] ✅ Network JSON (text->json) (Enter).")
+                    return data2
+            except Exception:
+                pass
+            return None
         except Exception:
             # JSON parse patladı → text kontrol et
             txt = await resp.text()
@@ -179,18 +177,17 @@ async def _try_network_capture(page: Page, container: Page, bl: str):
                 if _looks_like_json(data):
                     print(f"[{bl}] ✅ Network JSON alındı (Buton).")
                     return data
-                else:
-                    txt2 = await resp2.text()
-                    if _looks_like_html(txt2):
-                        print(f"[{bl}] ❌ Network yanıtı HTML (Buton).")
-                        return None
-                    try:
-                        data3 = json.loads(txt2)
-                        if _looks_like_json(data3):
-                            print(f"[{bl}] ✅ Network JSON (text->json) (Buton).")
-                            return data3
-                    except Exception:
-                        return None
+                txt2 = await resp2.text()
+                if _looks_like_html(txt2):
+                    print(f"[{bl}] ❌ Network yanıtı HTML (Buton).")
+                    return None
+                try:
+                    data3 = json.loads(txt2)
+                    if _looks_like_json(data3):
+                        print(f"[{bl}] ✅ Network JSON (text->json) (Buton).")
+                        return data3
+                except Exception:
+                    return None
             except Exception:
                 txt2 = await resp2.text()
                 if _looks_like_html(txt2):
@@ -206,7 +203,7 @@ async def _try_network_capture(page: Page, container: Page, bl: str):
         except PWTimeout:
             return None
 
-    return None
+    return None  # ← try/except dışına kondu, sözdizimi sorunu yok
 
 
 async def _fetch_fallback(page: Page, bl: str):
@@ -259,7 +256,6 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
         page.set_default_timeout(30_000)
 
         try:
-            # Widget'ların görünürlüğü için CSS engeli yok
             await page.goto("https://www.msc.com/en/track-a-shipment", wait_until="domcontentloaded")
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
@@ -270,7 +266,6 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
 
             container = await _find_container(page)
             if not container:
-                # BL parametreli sayfa
                 param = f"trackingNumber={bl}&trackingMode=0"
                 b64 = base64.b64encode(param.encode()).decode()
                 url = f"https://www.msc.com/en/track-a-shipment?params={b64}"
@@ -291,7 +286,6 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
                 data = await _fetch_fallback(page, bl)
 
             if not data:
-                # Son deneme: sayfayı yenile + tekrar network dene
                 await page.reload(wait_until="domcontentloaded")
                 try:
                     await page.wait_for_load_state("networkidle", timeout=8000)
@@ -309,13 +303,11 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
                     general_info = bill.get("GeneralTrackingInfo", {}) or {}
                     containers = bill.get("ContainersInfo", []) or []
 
-                    # Export Loaded on Vessel
                     for c in containers:
                         for event in c.get("Events", []) or []:
                             if normalize(event.get("Description")) == "export loaded on vessel":
                                 export_date = event.get("Date") or export_date
 
-                    # 1) POD ETA
                     found = False
                     for c in containers:
                         for event in c.get("Events", []) or []:
@@ -326,12 +318,10 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
                         if found:
                             break
 
-                    # 2) FinalPodEtaDate
                     if not found and general_info.get("FinalPodEtaDate"):
                         eta, kaynak = general_info["FinalPodEtaDate"], "Final POD ETA"
                         found = True
 
-                    # 3) Container.PodEtaDate
                     if not found:
                         for c in containers:
                             pod = c.get("PodEtaDate")
@@ -340,7 +330,6 @@ async def get_eta_etd(bl: str, context: BrowserContext, sem: asyncio.Semaphore) 
                                 found = True
                                 break
 
-                    # 4) Import to consignee
                     if not found:
                         for c in containers:
                             for event in c.get("Events", []) or []:
