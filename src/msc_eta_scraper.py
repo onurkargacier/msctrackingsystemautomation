@@ -1,12 +1,18 @@
-# src/msc_eta_scraper.py
-
 import base64
 
 import unicodedata
 
 import requests
 
+import re
+
+import os
+
+from typing import Dict, Any, List, Tuple
+
 from playwright.async_api import async_playwright
+
+# ---- eşleştirme yardımcıları ----
 
 def normalize(s: str) -> str:
 
@@ -20,21 +26,55 @@ def normalize(s: str) -> str:
 
     return "".join(c for c in nfkd if unicodedata.category(c) != "Mn").lower()
 
+def _norm_desc(s: str) -> str:
+
+    """Lower + diacritics kaldır + harf/rakam dışını tek boşluğa indir."""
+
+    s = normalize(s or "")
+
+    s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+    return s
+
+POD_ETA_ALIASES = {
+
+    "pod eta", "pod eta date", "eta pod",
+
+    "pod estimated time of arrival", "pod estimated arrival",
+
+    "pod eta at pod"
+
+}
+
+IMPORT_TO_CONSIGNEE_ALIASES = {
+
+    "import to consignee", "import to consignee date", "import consignee"
+
+}
+
+DEBUG_EVENTS = os.environ.get("DEBUG_EVENTS", "0") == "1"
+
+# ---- ana fonksiyonlar ----
+
 async def get_eta_etd(bl: str, browser, sem):
 
     """
 
-    BL için:
+    Döndürür:
 
-      ETA öncelik: 1) POD ETA (events, tüm konteynerler)
+      {
 
-                   2) FinalPodEtaDate (general)
+        "konşimento": BL,
 
-                   3) PodEtaDate (container field)
+        "ETA (Date)": ...,
 
-                   4) Import to consignee (events)
+        "Kaynak": ...,
 
-      ETD: Export loaded on vessel (tüm konteynerlerdeki SON tarih)
+        "ETD": ...,
+
+        "log": [ "mesaj1", "mesaj2", ... ]  # Log sheet için
+
+      }
 
     """
 
@@ -56,6 +96,8 @@ async def get_eta_etd(bl: str, browser, sem):
 
         etd = "Bilinmiyor"
 
+        logs: List[str] = []
+
         try:
 
             # 1) Sayfaya git
@@ -68,7 +110,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             await page.goto(url, wait_until="domcontentloaded")
 
-            # 2) Cookie + token al
+            # 2) Cookie + token
 
             cookies = await page.context.cookies()
 
@@ -78,7 +120,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             await page.close()
 
-            # 3) API'ye POST
+            # 3) API POST
 
             api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
 
@@ -114,6 +156,8 @@ async def get_eta_etd(bl: str, browser, sem):
 
             if not bills:
 
+                logs.append("BillOfLadings boş veya gelmedi.")
+
                 raise ValueError("BillOfLadings boş.")
 
             bill = bills[0]
@@ -121,6 +165,22 @@ async def get_eta_etd(bl: str, browser, sem):
             general = bill.get("GeneralTrackingInfo", {}) or {}
 
             containers = bill.get("ContainersInfo", []) or []
+
+            if DEBUG_EVENTS:
+
+                try:
+
+                    first = containers[0] if containers else {}
+
+                    descs = [( (ev.get("Description","") or "").strip(), (ev.get("Date","") or "") )
+
+                             for ev in (first.get("Events") or [])]
+
+                    logs.append(f"İlk konteyner event'leri (ilk 10): {descs[:10]}")
+
+                except Exception:
+
+                    pass
 
             # --- ETD (Export Loaded on Vessel) → tüm konteynerlerdeki SON tarih ---
 
@@ -132,7 +192,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
                 for ev in (c.get("Events") or [])
 
-                if normalize(ev.get("Description")) == "export loaded on vessel"
+                if _norm_desc(ev.get("Description")) == "export loaded on vessel"
 
             ]
 
@@ -140,19 +200,21 @@ async def get_eta_etd(bl: str, browser, sem):
 
                 etd = export_events[-1]
 
+            else:
+
+                logs.append("ETD için 'export loaded on vessel' event'i bulunamadı.")
+
             # --- ETA öncelik 1: POD ETA (tüm konteyner event'lerinde) ---
 
-            event_etas = [
+            event_etas = []
 
-                (ev or {}).get("Date")
+            for c in containers:
 
-                for c in containers
+                for ev in (c.get("Events") or []):
 
-                for ev in (c.get("Events") or [])
+                    if _norm_desc(ev.get("Description")) in POD_ETA_ALIASES:
 
-                if normalize(ev.get("Description")) == "pod eta"
-
-            ]
+                        event_etas.append(ev.get("Date"))
 
             if event_etas:
 
@@ -180,23 +242,27 @@ async def get_eta_etd(bl: str, browser, sem):
 
                         # --- ETA öncelik 4: Import to consignee (events) ---
 
-                        import_events = [
+                        import_events = []
 
-                            (ev or {}).get("Date")
+                        for c in containers:
 
-                            for c in containers
+                            for ev in (c.get("Events") or []):
 
-                            for ev in (c.get("Events") or [])
+                                if _norm_desc(ev.get("Description")) in IMPORT_TO_CONSIGNEE_ALIASES:
 
-                            if normalize(ev.get("Description")) == "import to consignee"
-
-                        ]
+                                    import_events.append(ev.get("Date"))
 
                         if import_events:
 
                             eta, kaynak = import_events[0], "Import to consignee"
 
+                        else:
+
+                            logs.append("ETA için uygun event/alan bulunamadı (POD ETA / Final / PodEtaDate / Import).")
+
         except Exception as e:
+
+            logs.append(f"Hata: {e}")
 
             print(f"[{bl}] ⚠️ Hata: {e}")
 
@@ -210,7 +276,9 @@ async def get_eta_etd(bl: str, browser, sem):
 
             "Kaynak": kaynak,
 
-            "ETD": etd
+            "ETD": etd,
+
+            "log": logs,
 
         }
 
@@ -221,5 +289,3 @@ async def init_browser():
     browser = await pw.chromium.launch(headless=True)
 
     return browser, pw
-
- 
