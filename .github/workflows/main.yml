@@ -3,7 +3,10 @@ name: MSC ETA Tracking Automation
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'  # Her gün 09:00 TR (UTC+3)
+    - cron: '0 5 * * *'     # 08:00 TR
+    - cron: '30 9 * * *'    # 12:30 TR
+    - cron: '0 13 * * *'    # 16:00 TR
+
 
 jobs:
   run-script:
