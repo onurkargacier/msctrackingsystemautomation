@@ -1,9 +1,14 @@
-pandas
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
+# Web scraping ve otomasyon
 playwright
-requests
+aiohttp
+
+# Google Sheets entegrasyonu
 gspread
 gspread-formatting
+oauth2client
+
+# Tarih, saat ve zaman dilimi işlemleri
+pytz
+
+# Genel yardımcı kütüphaneler
+requests
