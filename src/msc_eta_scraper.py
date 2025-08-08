@@ -16,7 +16,7 @@ def normalize(s: str) -> str:
 
 async def get_eta_etd(bl: str, browser, sem):
 
-    """Belirtilen konşimento (BL) için ETA ve Export tarihini döndürür."""
+    """Belirtilen konşimento (BL) için ETA (POD ETA -> Import to consignee) ve ETD (Export Loaded on Vessel son) döndürür."""
 
     async with sem:
 
@@ -26,7 +26,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
         page.set_default_timeout(15000)
 
-        # Gereksiz medya isteklerini iptal et
+        # gereksiz medya isteklerini iptal et
 
         await page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
 
@@ -34,11 +34,11 @@ async def get_eta_etd(bl: str, browser, sem):
 
         kaynak = "Bilinmiyor"
 
-        export_date = "Bilinmiyor"
+        etd = "Bilinmiyor"
 
         try:
 
-            # MSC tracking sayfasına giriş
+            # MSC tracking sayfasına gir
 
             param = f"trackingNumber={bl}&trackingMode=0"
 
@@ -48,7 +48,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             await page.goto(url, wait_until="domcontentloaded")
 
-            # Cookie ve token al
+            # cookie + token al
 
             cookies = await page.context.cookies()
 
@@ -62,13 +62,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
 
-            payload = {
-
-                "trackingNumber": bl,
-
-                "trackingMode": "0"
-
-            }
+            payload = {"trackingNumber": bl, "trackingMode": "0"}
 
             headers = {
 
@@ -102,35 +96,35 @@ async def get_eta_etd(bl: str, browser, sem):
 
                 containers = bill_of_ladings[0].get("ContainersInfo", [])
 
-                # EXPORT LOADED ON VESSEL → tüm konteynerlerden en sonuncu
+                # ETD (Export Loaded on Vessel) → tüm konteynerlerdeki SON tarih
 
                 export_events = [
 
-                    event.get("Date")
+                    ev.get("Date")
 
-                    for container in containers
+                    for c in containers
 
-                    for event in container.get("Events", [])
+                    for ev in c.get("Events", []) or []
 
-                    if event.get("Description", "").strip().lower() == "export loaded on vessel"
+                    if (ev.get("Description", "") or "").strip().lower() == "export loaded on vessel"
 
                 ]
 
                 if export_events:
 
-                    export_date = export_events[-1]
+                    etd = export_events[-1]
 
-                # ETA → Öncelik 1: POD ETA (ilk konteynerden)
+                # ETA → 1) POD ETA (SADECE ilk konteyner)
 
                 first_container = containers[0] if containers else {}
 
                 pod_eta_event = next(
 
-                    (event.get("Date")
+                    (ev.get("Date")
 
-                     for event in first_container.get("Events", [])
+                     for ev in first_container.get("Events", []) or []
 
-                     if event.get("Description", "").strip().lower() == "pod eta"),
+                     if (ev.get("Description", "") or "").strip().lower() == "pod eta"),
 
                     None
 
@@ -142,17 +136,17 @@ async def get_eta_etd(bl: str, browser, sem):
 
                 else:
 
-                    # Öncelik 2: Import to consignee (konteynerler içinde ilk bulunan)
+                    # 2) Import to consignee (konteynerler içinde ilk bulunan)
 
                     import_event = next(
 
-                        (event.get("Date")
+                        (ev.get("Date")
 
-                         for container in containers
+                         for c in containers
 
-                         for event in container.get("Events", [])
+                         for ev in c.get("Events", []) or []
 
-                         if event.get("Description", "").strip().lower() == "import to consignee"),
+                         if (ev.get("Description", "") or "").strip().lower() == "import to consignee"),
 
                         None
 
@@ -166,7 +160,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             print(f"[{bl}] ⚠️ Hata: {e}")
 
-        print(f"[{bl}] → ETA: {eta} ({kaynak}), Export: {export_date}")
+        print(f"[{bl}] → ETA: {eta} ({kaynak}), ETD: {etd}")
 
         return {
 
@@ -176,7 +170,7 @@ async def get_eta_etd(bl: str, browser, sem):
 
             "Kaynak": kaynak,
 
-            "Export Loaded on Vessel Date": export_date
+            "ETD": etd
 
         }
 
@@ -187,5 +181,6 @@ async def init_browser():
     browser = await pw.chromium.launch(headless=True)
 
     return browser, pw
-
+Shipping Container Tracking and Tracing | MSC
+MSC offers an online tracking and tracing system enabling containers to be tracked throughout the world. Find your freight fast. Contact our team today!
  
