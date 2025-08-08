@@ -18,6 +18,18 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    # Aynı workflow’un üst üste binmesini engelle
+    concurrency:
+      group: msctracking-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      # İsteğe göre ayarla: Access Denied riski varsa 4–8 arası iyi
+      CONCURRENCY: "8"
+      # Event etiketlerini Log sheet’te görmek istersen 1 yap
+      DEBUG_EVENTS: "0"
 
     steps:
       - name: Reposu klonla
@@ -27,6 +39,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Preflight secrets check
         env:
@@ -35,18 +48,16 @@ jobs:
         run: |
           set -euo pipefail
           : "${GOOGLE_CREDENTIALS:?GOOGLE_CREDENTIALS missing. Add it in Actions secrets.}"
-          if [ -z "${SPREADSHEET_ID:-}" ]; then
-            echo "SPREADSHEET_ID yok; lütfen repo secrets'a ekleyin."
-          else
-            echo "SPREADSHEET_ID mevcut."
-          fi
+          : "${SPREADSHEET_ID:?SPREADSHEET_ID missing. Add it in Actions secrets.}"
+          echo "Secrets OK"
 
       - name: credentials.json oluştur
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
           set -euo pipefail
-          echo "${GOOGLE_CREDENTIALS}" > credentials.json
+          # Güvenli yaz (kaçış karakteri bozulmasın)
+          printf '%s' "${GOOGLE_CREDENTIALS}" > credentials.json
 
       - name: Sistem bağımlılıklarını kur
         run: |
@@ -70,6 +81,8 @@ jobs:
       - name: Scripti çalıştır
         env:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          CONCURRENCY: ${{ env.CONCURRENCY }}
+          DEBUG_EVENTS: ${{ env.DEBUG_EVENTS }}
         run: |
           set -euo pipefail
           python src/main.py
