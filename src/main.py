@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-import random
 from typing import List, Dict, Any, Tuple
 
 import pandas as pd
@@ -88,7 +87,7 @@ def write_results_to_sheet(records: List[Dict[str, Any]]) -> None:
         body={"values": headers},
     ).execute()
 
-    # Veri yaz
+    # Veri yaz (aynı aralık)
     data_range = f"D2:G{1 + len(new_rows)}" if new_rows else "D2:G2"
     sheet.values().update(
         spreadsheetId=SPREADSHEET_ID,
@@ -109,10 +108,10 @@ def write_results_to_sheet(records: List[Dict[str, Any]]) -> None:
                 "repeatCell": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startRowIndex": 1,
-                        "endRowIndex": 1 + len(new_rows),
-                        "startColumnIndex": 3,
-                        "endColumnIndex": 7,
+                        "startRowIndex": 1,                 # D2
+                        "endRowIndex": 1 + len(new_rows),   # D(1+n)
+                        "startColumnIndex": 3,               # D
+                        "endColumnIndex": 7,                 # G (exclusive)
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -123,13 +122,13 @@ def write_results_to_sheet(records: List[Dict[str, Any]]) -> None:
                 }
             })
 
-        # Değişen hücreleri işaretle
+        # Değişen hücreleri sarıya boya (E,F,G)
         for i, row in enumerate(new_rows):
             bl = row[0]
             old = prev_map.get(bl)
             if not old:
                 continue
-            for j in (1, 2, 3):
+            for j in (1, 2, 3):  # E,F,G
                 if (old[j] or "") != (row[j] or ""):
                     start_row = 1 + i
                     start_col = 3 + j
@@ -160,7 +159,7 @@ def write_results_to_sheet(records: List[Dict[str, Any]]) -> None:
         print(f"Renkleme sırasında uyarı: {e}")
 
 
-# ===== Tarayıcı başlatma ve scraping =====
+# ===== Tarayıcı başlatma ve scraping (Yüksek paralellik) =====
 async def run_async(bl_list: List[str]) -> List[Dict[str, Any]]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -184,13 +183,11 @@ async def run_async(bl_list: List[str]) -> List[Dict[str, Any]]:
             )
         )
         try:
-            sem = asyncio.Semaphore(3)  # doğal hız için eşzamanlılık düşük
-            results = []
-            for bl in bl_list:
-                # BL’ler arasında küçük bekleme (insan gibi)
-                await asyncio.sleep(random.uniform(2, 4))
-                result = await get_eta_etd(bl, context, sem)
-                results.append(result)
+            # Colab hızındaki paralellik:
+            sem = asyncio.Semaphore(32)
+
+            tasks = [get_eta_etd(bl, context, sem) for bl in bl_list]
+            results = await asyncio.gather(*tasks)
             return results
         finally:
             await context.close()
