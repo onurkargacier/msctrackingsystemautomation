@@ -137,7 +137,7 @@ async def run_once(bl_list: List[str], prev_map: Dict[str, Dict[str, Any]], ws_d
                         "Chrome/120.0.0.0 Safari/537.36")
         )
 
-        sem = asyncio.Semaphore(32)
+        sem = asyncio.Semaphore(8)
 
         async def task(bl: str):
             attempt = 0
