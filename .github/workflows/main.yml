@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           : "${GOOGLE_CREDENTIALS:?GOOGLE_CREDENTIALS missing. Add it in Actions secrets.}"
           if [ -z "${SPREADSHEET_ID:-}" ]; then
-            echo "SPREADSHEET_ID yok; env'den veya kodun fallback ID'sinden kullanılacak."
+            echo "SPREADSHEET_ID yok; koddaki FALLBACK kullanılmayacak. Lütfen secrets'a ekleyin."
           else
             echo "SPREADSHEET_ID mevcut."
           fi
@@ -45,11 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "${GOOGLE_CREDENTIALS}" > credentials.json
-          # İçerik doğrulama (opsiyonel)
           python - <<'PY'
-import json,sys
-j=json.load(open("credentials.json"))
-print("Service account:", j.get("client_email","<unknown>"))
+import json; j=json.load(open("credentials.json")); print("Service account:", j.get("client_email","<unknown>"))
 PY
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
@@ -70,12 +67,11 @@ PY
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
       - name: Scripti çalıştır
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           set -euo pipefail
