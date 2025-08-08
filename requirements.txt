@@ -1,14 +1,12 @@
 # Web scraping ve otomasyon
 playwright
-aiohttp
 
 # Google Sheets entegrasyonu
 gspread
 gspread-formatting
-oauth2client
+google-auth
+google-auth-httplib2
 
-# Tarih, saat ve zaman dilimi işlemleri
-pytz
-
-# Genel yardımcı kütüphaneler
+# Yardımcılar
 requests
+pytz
