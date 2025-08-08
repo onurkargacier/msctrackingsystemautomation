@@ -6,3 +6,4 @@ google-auth-httplib2
 playwright
 requests
 gspread
+gspread-formatting
