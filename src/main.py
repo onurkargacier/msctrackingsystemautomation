@@ -245,9 +245,9 @@ def write_results(ws_data, rows: List[List[Any]]):
 
     format_cell_ranges(ws_data, [
 
-        (f"B2:B{last_row}", fmt_date),      # ETA
+        (f"B2:B{last_row}", fmt_datetime),      # ETA
 
-        (f"D2:D{last_row}", fmt_date),      # ETD
+        (f"D2:D{last_row}", fmt_datetime),      # ETD
 
         (f"E2:E{last_row}", fmt_datetime),  # Çekim Zamanı (TR)
 
