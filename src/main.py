@@ -33,12 +33,21 @@ SHEET_DATA = "Data"
 SHEET_LOG = "Log"
 
 DATA_HEADERS = [
-    {"name": "Konşimento", "type": "text"},
-    {"name": "ETA", "type": "date"},
-    {"name": "Kaynak", "type": "text"},
-    {"name": "ETD", "type": "date"},
-    {"name": "Çekim Zamanı (TR)", "type": "datetime"},
-    {"name": "Not", "type": "text"}
+    "Konşimento",
+    "ETA (Date)",
+    "Kaynak",
+    "ETD",
+    "Çekim Zamanı (TR)",
+    "Not"
+]
+
+DATA_TYPES = [
+    "text",
+    "date",
+    "text",
+    "date",
+    "datetime",
+    "text"
 ]
 
 LOG_HEADERS = [
