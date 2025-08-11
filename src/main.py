@@ -155,77 +155,66 @@ def read_bl_list(sh) -> List[str]:
     return [v.strip() for v in col[1:] if v and v.strip()]
 
 def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
-
     """Data sayfasındaki önceki ETA/ETD metinlerini haritalar."""
-
-    rows = ws_data.get_all_values()
-
+    
+    # DEĞİŞİKLİK: Verileri formatlanmamış (ham) olarak oku. 
+    # Tarihler artık '45883' gibi seri numaraları olarak gelecek.
+    rows = ws_data.get_all_values(value_render_option='UNFORMATTED_VALUE')
+    
     prev: Dict[str, Dict[str, str]] = {}
-
     if not rows:
-
         return prev
-
+        
     header = rows[0]
-
     idx_bl  = header.index("Konşimento") if "Konşimento" in header else 0
-
     idx_eta = header.index("ETA (Date)") if "ETA (Date)" in header else 1
-
     idx_etd = header.index("ETD")        if "ETD" in header        else 3
 
     for r in rows[1:]:
-
         if not r or len(r) <= idx_bl:
-
             continue
-
-        bl = (r[idx_bl] or "").strip()
-
+        bl = str(r[idx_bl] or "").strip() # Gelen değer sayı olabileceğinden str() ile garantiye al
         if not bl:
-
             continue
-
+        
+        # Gelen değerler metin veya sayı olabilir, bu yüzden to_iso_date'e doğrudan gönderiyoruz.
         eta_old = r[idx_eta] if len(r) > idx_eta else ""
-
         etd_old = r[idx_etd] if len(r) > idx_etd else ""
-
+        
         prev[bl] = {"ETA": eta_old, "ETD": etd_old}
-
+        
     return prev
 
-def to_iso_date(s: str) -> str:
 
+def to_iso_date(s: Any) -> str:
     """
-
-    '15/08/2025' veya '15.08.2025' -> '2025-08-15'
-
+    '15/08/2025', '15.08.2025' veya E-Tablolar seri numarasını (örn: 45883) '2025-08-15' formatına çevirir.
     Zaten ISO ise olduğu gibi döner.
-
     Geçersiz ya da 'Bilinmiyor' ise '' döner.
-
     """
-
     if not s:
-
         return ""
 
-    s = s.strip()
+    # YENİ: Gelen değer bir sayı ise (E-Tablolar seri numarası)
+    if isinstance(s, (int, float)):
+        # Google Sheets/Excel epoch'u 1899-12-30'dur.
+        # Seri numarası 1, 1899-12-31'e denk gelir.
+        try:
+            return (datetime(1899, 12, 30) + timedelta(days=s)).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            return ""
 
+    s = str(s).strip()
     if s.lower() == "bilinmiyor":
-
         return ""
 
+    # Mevcut metin tabanlı kontrolleriniz
     m = re.match(r"^(\d{2})[./](\d{2})[./](\d{4})$", s)
-
     if m:
-
         d, mth, y = m.groups()
-
         return f"{y}-{mth}-{d}"
 
     if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
-
         return s
 
     return ""
