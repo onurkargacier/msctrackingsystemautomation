@@ -148,20 +148,23 @@ def write_results(ws_data, rows: List[List[Any]]):
     end_col = chr(ord('A') + len(DATA_HEADERS) - 1)
     ws_data.update([DATA_HEADERS], range_name=f"A1:{end_col}1")
     
+    # Verileri yazmadan önce datetime objesine dönüştürüp gspread'in otomatik tanımasını sağlıyoruz.
     if rows:
-        # Tarih ve saat formatındaki değerleri metin dizesine çeviriyoruz.
         formatted_rows = []
         for row in rows:
             formatted_row = []
             for i, val in enumerate(row):
                 if DATA_TYPES[i] == "date" and val:
                     try:
-                        formatted_row.append(datetime.strptime(val, "%Y-%m-%d").strftime("%Y-%m-%d"))
+                        formatted_row.append(datetime.strptime(val, "%d/%m/%Y"))
                     except (ValueError, TypeError):
-                        formatted_row.append(val)
+                        try:
+                           formatted_row.append(datetime.strptime(val, "%Y-%m-%d"))
+                        except (ValueError, TypeError):
+                           formatted_row.append(val)
                 elif DATA_TYPES[i] == "datetime" and val:
                     try:
-                        formatted_row.append(datetime.strptime(val, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"))
+                        formatted_row.append(datetime.strptime(val, "%Y-%m-%d %H:%M:%S"))
                     except (ValueError, TypeError):
                         formatted_row.append(val)
                 else:
