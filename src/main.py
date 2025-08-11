@@ -1,6 +1,8 @@
+# src/main.py
+
 import os
 
-import json
+import re
 
 import asyncio
 
@@ -8,7 +10,7 @@ from datetime import datetime
 
 from typing import List, Dict, Any, Optional, Tuple
 
-from zoneinfo import ZoneInfo  # TR saati
+from zoneinfo import ZoneInfo  # TR saati için
 
 import gspread
 
@@ -46,17 +48,17 @@ SHEET_LOG = "Log"
 
 DATA_HEADERS = [
 
-    "Konşimento",
+    "Konşimento",          # A (metin)
 
-    "ETA (Date)",
+    "ETA (Date)",          # B (tarih)
 
-    "Kaynak",
+    "Kaynak",              # C (metin)
 
-    "ETD",
+    "ETD",                 # D (tarih)
 
-    "Çekim Zamanı (TR)",
+    "Çekim Zamanı (TR)",   # E (tarih-saat)
 
-    "Not",
+    "Not",                 # F (metin)
 
 ]
 
@@ -64,37 +66,15 @@ LOG_HEADERS = ["Zaman (TR)", "Konşimento", "Mesaj"]
 
 DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "8"))
 
-PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
+# Pastel kırmızı (ETA değişim boyaması)
 
+PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
 
 # =========================
 
 # Yardımcılar
 
 # =========================
-
-def get_credentials() -> Credentials:
-
-    """GOOGLE_CREDENTIALS (secret) -> json; yoksa dosya arar."""
-
-    if "GOOGLE_CREDENTIALS" in os.environ and os.environ["GOOGLE_CREDENTIALS"].strip():
-
-        creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-
-        return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-
-    for fname in ("google_credentials.json", "credentials.json"):
-
-        if os.path.exists(fname):
-
-            return Credentials.from_service_account_file(fname, scopes=SCOPES)
-
-    raise RuntimeError(
-
-        "Kimlik bilgisi bulunamadı. GOOGLE_CREDENTIALS secret'ını veya google_credentials.json dosyasını sağlayın."
-
-    )
-
 
 def open_sheet():
 
@@ -104,12 +84,11 @@ def open_sheet():
 
         raise RuntimeError("SPREADSHEET_ID ortam değişkeni yok.")
 
-    creds = get_credentials()
+    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
 
     gc = gspread.authorize(creds)
 
     return gc.open_by_key(sheet_id)
-
 
 def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
 
@@ -123,12 +102,11 @@ def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
 
         if headers:
 
-            end_col = chr(ord("A") + len(headers) - 1)
+            end_col = chr(ord('A') + len(headers) - 1)
 
-            ws.update([headers], range_name=f"A1:{end_col}1")
+            ws.update([headers], range_name=f"A1:{end_col}1", value_input_option="USER_ENTERED")
 
     return ws
-
 
 def read_bl_list(sh) -> List[str]:
 
@@ -140,13 +118,11 @@ def read_bl_list(sh) -> List[str]:
 
         col = ws_in.col_values(1)
 
-        if col:
+        vals = [v.strip() for v in col[1:] if v and v.strip()]
 
-            vals = [v.strip() for v in col[1:] if v and v.strip()]
+        if vals:
 
-            if vals:
-
-                return vals
+            return vals
 
     except gspread.WorksheetNotFound:
 
@@ -160,13 +136,11 @@ def read_bl_list(sh) -> List[str]:
 
         col = ws_data.col_values(1)
 
-        if col:
+        vals = [v.strip() for v in col[1:] if v and v.strip()]
 
-            vals = [v.strip() for v in col[1:] if v and v.strip()]
+        if vals:
 
-            if vals:
-
-                return vals
+            return vals
 
     except gspread.WorksheetNotFound:
 
@@ -180,10 +154,9 @@ def read_bl_list(sh) -> List[str]:
 
     return [v.strip() for v in col[1:] if v and v.strip()]
 
-
 def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
-    """Data sayfasındaki önceki ETA/ETD değerlerini haritalar."""
+    """Data sayfasındaki önceki ETA/ETD metinlerini haritalar."""
 
     rows = ws_data.get_all_values()
 
@@ -195,11 +168,11 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
     header = rows[0]
 
-    idx_bl = header.index("Konşimento") if "Konşimento" in header else 0
+    idx_bl  = header.index("Konşimento") if "Konşimento" in header else 0
 
     idx_eta = header.index("ETA (Date)") if "ETA (Date)" in header else 1
 
-    idx_etd = header.index("ETD") if "ETD" in header else 3
+    idx_etd = header.index("ETD")        if "ETD" in header        else 3
 
     for r in rows[1:]:
 
@@ -221,87 +194,75 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
     return prev
 
-
-def to_iso_date_or_raw(s: str) -> str:
-
-    """
-
-    '15/08/2025', '15.08.2025', '2025-08-15', '15-08-2025' gibi tarihleri
-
-    ISO 'YYYY-MM-DD' formatına çevirir. Olmazsa olduğu gibi döner.
+def to_iso_date(s: str) -> str:
 
     """
 
-    if not s or s.strip().lower() == "bilinmiyor":
+    '15/08/2025' veya '15.08.2025' -> '2025-08-15'
 
-        return s
+    Zaten ISO ise olduğu gibi döner.
+
+    Geçersiz ya da 'Bilinmiyor' ise '' döner.
+
+    """
+
+    if not s:
+
+        return ""
 
     s = s.strip()
 
-    fmts = ["%d/%m/%Y", "%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y"]
+    if s.lower() == "bilinmiyor":
 
-    for f in fmts:
+        return ""
 
-        try:
+    m = re.match(r"^(\d{2})[./](\d{2})[./](\d{4})$", s)
 
-            dt = datetime.strptime(s, f)
+    if m:
 
-            return dt.strftime("%Y-%m-%d")
+        d, mth, y = m.groups()
 
-        except ValueError:
+        return f"{y}-{mth}-{d}"
 
-            pass
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
 
-    return s
+        return s
 
+    return ""
 
 def write_results(ws_data, rows: List[List[Any]]):
 
-    """Data sayfasını başlık + verilerle tamamen yeniler ve biçim uygular."""
+    """Data sayfasına başlık + verileri tamamen üzerine yazar (USER_ENTERED + formatlar)."""
 
     ws_data.clear()
 
-    end_col = chr(ord("A") + len(DATA_HEADERS) - 1)
+    end_col = chr(ord('A') + len(DATA_HEADERS) - 1)
 
-    ws_data.update([DATA_HEADERS], range_name=f"A1:{end_col}1")
+    # Başlık
+
+    ws_data.update([DATA_HEADERS], range_name=f"A1:{end_col}1", value_input_option="USER_ENTERED")
 
     if rows:
 
-        # USER_ENTERED: ISO tarihleri gerçek tarih yapar
+        ws_data.update(rows, range_name=f"A2:{end_col}{len(rows) + 1}", value_input_option="USER_ENTERED")
 
-        ws_data.update(
+    # Sütun formatları: B ve D tarih; E tarih-saat. TR görüntü: dd.MM.yyyy, dd.MM.yyyy HH:mm
 
-            rows, range_name=f"A2:{end_col}{len(rows) + 1}", value_input_option="USER_ENTERED"
+    fmt_date     = CellFormat(numberFormat=NumberFormat(type="DATE",     pattern="dd.MM.yyyy"))
 
-        )
+    fmt_datetime = CellFormat(numberFormat=NumberFormat(type="DATE_TIME",pattern="dd.MM.yyyy HH:mm"))
 
-    # Sütun biçimleri (B: ETA, D: ETD, E: Çekim Zamanı TR)
+    last_row = max(2, len(rows) + 1)
 
-    apply_column_number_formats(ws_data)
+    format_cell_ranges(ws_data, [
 
+        (f"B2:B{last_row}", fmt_date),      # ETA
 
-def apply_column_number_formats(ws_data):
+        (f"D2:D{last_row}", fmt_date),      # ETD
 
-    """B ve D'yi DATE, E'yi DATE_TIME formatına çek (dd.mm.yyyy / dd.mm.yyyy hh:mm)."""
+        (f"E2:E{last_row}", fmt_datetime),  # Çekim Zamanı (TR)
 
-    ranges = [
-
-        ("B2:B", CellFormat(numberFormat=NumberFormat(type="DATE", pattern="dd.mm.yyyy"))),
-
-        ("D2:D", CellFormat(numberFormat=NumberFormat(type="DATE", pattern="dd.mm.yyyy"))),
-
-        (
-
-            "E2:E",
-
-            CellFormat(numberFormat=NumberFormat(type="DATE_TIME", pattern="dd.mm.yyyy hh:mm")),
-
-        ),
-
-    ]
-
-    format_cell_ranges(ws_data, ranges)
-
+    ])
 
 def append_logs(ws_log, log_rows: List[List[Any]]):
 
@@ -311,14 +272,13 @@ def append_logs(ws_log, log_rows: List[List[Any]]):
 
     if not existing:
 
-        end_col = chr(ord("A") + len(LOG_HEADERS) - 1)
+        end_col = chr(ord('A') + len(LOG_HEADERS) - 1)
 
-        ws_log.update([LOG_HEADERS], range_name=f"A1:{end_col}1")
+        ws_log.update([LOG_HEADERS], range_name=f"A1:{end_col}1", value_input_option="USER_ENTERED")
 
     if log_rows:
 
-        ws_log.append_rows(log_rows, value_input_option="RAW")
-
+        ws_log.append_rows(log_rows, value_input_option="USER_ENTERED")
 
 def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
 
@@ -331,7 +291,6 @@ def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
     ranges = [(f"B{r}:B{r}", CellFormat(backgroundColor=PASTEL_RED)) for r in changed_rows_indices]
 
     format_cell_ranges(ws_data, ranges)
-
 
 # =========================
 
@@ -383,7 +342,6 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
 
     return results
 
-
 def to_rows_and_changes(
 
     results: List[Dict[str, Any]],
@@ -406,7 +364,7 @@ def to_rows_and_changes(
 
     now_tr = datetime.now(ZoneInfo("Europe/Istanbul"))
 
-    now_tr_str = now_tr.strftime("%Y-%m-%d %H:%M:%S")
+    now_tr_iso = now_tr.strftime("%Y-%m-%d %H:%M:%S")
 
     rows: List[List[Any]] = []
 
@@ -414,70 +372,77 @@ def to_rows_and_changes(
 
     log_rows: List[List[Any]] = []
 
-    for i, r in enumerate(results, start=2):  # sheet row index
+    for i, r in enumerate(results, start=2):  # sheet row numarası
 
         bl = r.get("konşimento", "")
-
-        src = r.get("Kaynak", "")
 
         eta_new_raw = (r.get("ETA (Date)", "") or "").strip()
 
         etd_new_raw = (r.get("ETD", "") or "").strip()
 
-        # ISO'ya çevir (Sheets gerçek tarih yapsın)
+        eta_iso = to_iso_date(eta_new_raw)
 
-        eta_cell = to_iso_date_or_raw(eta_new_raw)
+        etd_iso = to_iso_date(etd_new_raw)
 
-        etd_cell = to_iso_date_or_raw(etd_new_raw)
-
-        # Değişim kontrolü (metin bazlı)
+        # değişim notu (metin olarak karşılaştırma)
 
         eta_old = prev_map.get(bl, {}).get("ETA", "")
 
         note = ""
 
-        if eta_new_raw and eta_new_raw.lower() != "bilinmiyor" and eta_new_raw != eta_old:
+        if eta_iso:  # yeni tarih var
 
-            if eta_old:
+            # eskiyi de ISO'ya çevirerek kıyasla (metin eşitliği)
 
-                note = f"Tarih bilginiz değişti: {eta_old} → {eta_new_raw}"
+            eta_old_iso = to_iso_date(eta_old)
 
-            else:
+            if eta_old_iso != eta_iso:
 
-                note = f"Tarih bilginiz değişti: (yok) → {eta_new_raw}"
+                if eta_old_iso:
 
-            changed_row_numbers.append(i)
+                    # Görsel not için TR biçimi
 
-        rows.append(
+                    old_tr = datetime.strptime(eta_old_iso, "%Y-%m-%d").strftime("%d.%m.%Y")
 
-            [
+                    new_tr = datetime.strptime(eta_iso, "%Y-%m-%d").strftime("%d.%m.%Y")
 
-                bl,          # A Konşimento (metin)
+                    note = f"Tarih bilginiz değişti: {old_tr} → {new_tr}"
 
-                eta_cell,    # B ETA (ISO -> tarih)
+                else:
 
-                src,         # C Kaynak (metin)
+                    new_tr = datetime.strptime(eta_iso, "%Y-%m-%d").strftime("%d.%m.%Y")
 
-                etd_cell,    # D ETD (ISO -> tarih)
+                    note = f"Tarih bilginiz değişti: (yok) → {new_tr}"
 
-                now_tr_str,  # E Çekim Zamanı (TR) (ISO datetime)
+                changed_row_numbers.append(i)
 
-                note,        # F Not (metin)
+        rows.append([
 
-            ]
+            bl,                       # A (metin)
 
-        )
+            eta_iso,                  # B (ISO -> tarih hücresi)
+
+            r.get("Kaynak", ""),      # C (metin)
+
+            etd_iso,                  # D (ISO -> tarih hücresi)
+
+            now_tr_iso,               # E (ISO datetime -> tarih-saat hücresi)
+
+            note,                     # F (metin)
+
+        ])
+
+        # Log satırları
 
         for msg in (r.get("log") or []):
 
-            log_rows.append([now_tr_str, bl, msg])
+            log_rows.append([now_tr_iso, bl, msg])
 
     return rows, changed_row_numbers, log_rows
 
-
 # =========================
 
-# Ana
+# Ana akış
 
 # =========================
 
@@ -491,9 +456,9 @@ def main():
 
     ws_data = ensure_worksheet(sh, SHEET_DATA, headers=DATA_HEADERS)
 
-    ws_log = ensure_worksheet(sh, SHEET_LOG, headers=LOG_HEADERS)
+    ws_log  = ensure_worksheet(sh, SHEET_LOG, headers=LOG_HEADERS)
 
-    # Önceki değerler
+    # Önceki değerler (değişim kontrolü için)
 
     prev_map = read_previous_map(ws_data)
 
@@ -517,18 +482,17 @@ def main():
 
     rows, changed_row_numbers, log_rows = to_rows_and_changes(results, prev_map)
 
-    # Data yaz ve biçim uygula
+    # Data'yı yaz ve boyama uygula
 
     write_results(ws_data, rows)
 
     apply_eta_change_format(ws_data, changed_row_numbers)
 
-    # Log ekle
+    # Log'u ekle
 
     append_logs(ws_log, log_rows)
 
     print("✅ Tamamlandı.")
-
 
 if __name__ == "__main__":
 
