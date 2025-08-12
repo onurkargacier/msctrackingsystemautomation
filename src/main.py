@@ -28,9 +28,9 @@ SHEET_ID_ENV = "SPREADSHEET_ID"
 
 SHEET_INPUT = "Input"
 
-SHEET_DATA  = "Data"
+SHEET_DATA = "Data"
 
-SHEET_LOG   = "Log"
+SHEET_LOG = "Log"
 
 DATA_HEADERS = [
 
@@ -44,7 +44,7 @@ DATA_HEADERS = [
 
     "Çekim Zamanı (TR)",
 
-    "Not"
+    "Not",
 
 ]
 
@@ -54,21 +54,47 @@ LOG_HEADERS = [
 
     "Konşimento",
 
-    "Mesaj"
+    "Mesaj",
 
 ]
 
 DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "8"))
 
-# Değişimde B sütununu boyamak istersen dursun; otomatik dönüşüm yok.
+# Pastel kırmızı (değişimlerde)
 
 PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
+
 
 # =========================
 
 # Yardımcılar
 
 # =========================
+
+def canon_date_str(s: str) -> str:
+
+    """
+
+    Karşılaştırma amacıyla tarih metnini normalize eder.
+
+    Örn: '14.08.2025', '14/08/2025', '14-08-2025' -> '14082025'
+
+    'Bilinmiyor' veya boş ise '' döner.
+
+    """
+
+    if not s:
+
+        return ""
+
+    s = s.strip()
+
+    if s.lower() == "bilinmiyor":
+
+        return ""
+
+    return "".join(ch for ch in s if ch.isdigit())
+
 
 def open_sheet():
 
@@ -78,6 +104,8 @@ def open_sheet():
 
         raise RuntimeError("SPREADSHEET_ID ortam değişkeni yok.")
 
+    # GitHub Actions'da workflow, GOOGLE_CREDENTIALS secret'ını 'credentials.json' olarak yazar.
+
     creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
 
     gc = gspread.authorize(creds)
@@ -85,6 +113,7 @@ def open_sheet():
     sh = gc.open_by_key(sheet_id)
 
     return sh
+
 
 def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
 
@@ -103,6 +132,7 @@ def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
             ws.update([headers], range_name=f"A1:{end_col}1")
 
     return ws
+
 
 def read_bl_list(sh) -> List[str]:
 
@@ -154,9 +184,10 @@ def read_bl_list(sh) -> List[str]:
 
     return [v.strip() for v in col[1:] if v and v.strip()]
 
+
 def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
-    """Data sayfasındaki önceki ETA/ETD değerlerini ham metin olarak okur."""
+    """Data sayfasındaki önceki ETA/ETD değerlerini haritalar."""
 
     rows = ws_data.get_all_values()
 
@@ -168,11 +199,11 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
     header = rows[0]
 
-    idx_bl  = header.index("Konşimento") if "Konşimento" in header else 0
+    idx_bl = header.index("Konşimento") if "Konşimento" in header else 0
 
     idx_eta = header.index("ETA (Date)") if "ETA (Date)" in header else 1
 
-    idx_etd = header.index("ETD")        if "ETD" in header else 3
+    idx_etd = header.index("ETD") if "ETD" in header else 3
 
     for r in rows[1:]:
 
@@ -186,17 +217,18 @@ def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
 
             continue
 
-        eta_old = (r[idx_eta] if len(r) > idx_eta else "").strip()
+        eta_old = r[idx_eta] if len(r) > idx_eta else ""
 
-        etd_old = (r[idx_etd] if len(r) > idx_etd else "").strip()
+        etd_old = r[idx_etd] if len(r) > idx_etd else ""
 
         prev[bl] = {"ETA": eta_old, "ETD": etd_old}
 
     return prev
 
+
 def write_results(ws_data, rows: List[List[Any]]):
 
-    """Data sayfasına başlık + verileri tamamen üzerine yazar (ham metin)."""
+    """Data sayfasına başlık + verileri tamamen üzerine yazar."""
 
     ws_data.clear()
 
@@ -206,7 +238,8 @@ def write_results(ws_data, rows: List[List[Any]]):
 
     if rows:
 
-        ws_data.update(rows, range_name=f"A2:{end_col}{len(rows) + 1}")
+        ws_data.update(rows, range_name=f"A2:{end_col}{len(rows)+1}")
+
 
 def append_logs(ws_log, log_rows: List[List[Any]]):
 
@@ -224,9 +257,10 @@ def append_logs(ws_log, log_rows: List[List[Any]]):
 
         ws_log.append_rows(log_rows, value_input_option="RAW")
 
+
 def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
 
-    """ETA değişen satırların B sütununu pastel kırmızıya boya (opsiyonel)."""
+    """ETA değişen satırların B sütununu pastel kırmızıya boya."""
 
     if not changed_rows_indices:
 
@@ -235,6 +269,7 @@ def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
     ranges = [(f"B{r}:B{r}", CellFormat(backgroundColor=PASTEL_RED)) for r in changed_rows_indices]
 
     format_cell_ranges(ws_data, ranges)
+
 
 # =========================
 
@@ -272,7 +307,7 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
 
                     "ETD": "Bilinmiyor",
 
-                    "log": [f"üst seviye hata: {e}"]
+                    "log": [f"üst seviye hata: {e}"],
 
                 }
 
@@ -286,11 +321,12 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
 
     return results
 
+
 def to_rows_and_changes(
 
     results: List[Dict[str, Any]],
 
-    prev_map: Dict[str, Dict[str, str]]
+    prev_map: Dict[str, Dict[str, str]],
 
 ) -> Tuple[List[List[Any]], List[int], List[List[Any]]]:
 
@@ -298,7 +334,7 @@ def to_rows_and_changes(
 
     Dönüş:
 
-      - Data sheet'e yazılacak rows (HAM METİN)
+      - Data sheet'e yazılacak rows
 
       - ETA değişenlerin sheet satır numaraları (boyama)
 
@@ -314,23 +350,27 @@ def to_rows_and_changes(
 
     log_rows: List[List[Any]] = []
 
-    for i, r in enumerate(results, start=2):  # sheet satır indexi
+    for i, r in enumerate(results, start=2):  # sheet row index
 
-        bl       = (r.get("konşimento") or "").strip()
+        bl      = (r.get("konşimento") or "").strip()
 
-        eta_new  = (r.get("ETA (Date)") or "").strip()   # ham metin
+        eta_new = (r.get("ETA (Date)") or "").strip()
 
-        etd_new  = (r.get("ETD") or "").strip()          # ham metin
+        etd_new = (r.get("ETD") or "").strip()
 
-        kaynak   = (r.get("Kaynak") or "").strip()
+        kaynak  = (r.get("Kaynak") or "").strip()
 
-        # Önceki ham metinle karşılaştır
+        eta_old = (prev_map.get(bl, {}).get("ETA", "") or "").strip()
 
-        eta_old = prev_map.get(bl, {}).get("ETA", "")
+        # 🔑 Sadece karşılaştırma için normalize et (yazarken ham metni koruyoruz)
+
+        eta_new_cmp = canon_date_str(eta_new)
+
+        eta_old_cmp = canon_date_str(eta_old)
 
         note = ""
 
-        if eta_new and eta_new.lower() != "bilinmiyor" and (eta_new != eta_old):
+        if eta_new_cmp and (eta_new_cmp != eta_old_cmp):
 
             if eta_old:
 
@@ -344,17 +384,17 @@ def to_rows_and_changes(
 
         rows.append([
 
-            bl,         # Konşimento (metin)
+            bl,           # Konşimento  (metin)
 
-            eta_new,    # ETA (Date) (metin; dönüşüm YOK)
+            eta_new,      # ETA (Date)  (ham metin)
 
-            kaynak,     # Kaynak (metin)
+            kaynak,       # Kaynak      (metin)
 
-            etd_new,    # ETD (metin; dönüşüm YOK)
+            etd_new,      # ETD         (ham metin)
 
-            now_tr,     # Çekim Zamanı (TR) (metin; 'YYYY-MM-DD HH:MM:SS')
+            now_tr,       # Çekim Zamanı (TR)  (metin)
 
-            note,       # Not (metin)
+            note,         # Not         (metin)
 
         ])
 
@@ -363,6 +403,7 @@ def to_rows_and_changes(
             log_rows.append([now_tr, bl, msg])
 
     return rows, changed_row_numbers, log_rows
+
 
 def main():
 
@@ -376,7 +417,7 @@ def main():
 
     ws_log  = ensure_worksheet(sh, SHEET_LOG,  headers=LOG_HEADERS)
 
-    # Önceki değerleri ham metin olarak çek
+    # Önceki değerler
 
     prev_map = read_previous_map(ws_data)
 
@@ -396,21 +437,22 @@ def main():
 
     results = asyncio.run(run_once(bl_list))
 
-    # Satırlar + değişen satırlar + loglar
+    # Satırlar + değişim + loglar
 
     rows, changed_row_numbers, log_rows = to_rows_and_changes(results, prev_map)
 
-    # Data yaz (ham metin) + değişim boyama (opsiyonel)
+    # Data'yı yaz ve boyama uygula
 
     write_results(ws_data, rows)
 
     apply_eta_change_format(ws_data, changed_row_numbers)
 
-    # Log ekle
+    # Log'u ekle
 
     append_logs(ws_log, log_rows)
 
     print("✅ Tamamlandı.")
+
 
 if __name__ == "__main__":
 
