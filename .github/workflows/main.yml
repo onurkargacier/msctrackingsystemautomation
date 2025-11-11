@@ -3,8 +3,7 @@ name: MSC ETA Tracking Automation
 on:
   workflow_dispatch:
   schedule:
-    # TR 08:00–17:00  =>  UTC 05–14 her saat başı
-    - cron: '0 5 * * *'
+    - cron: '0 5 * * 1'  # Her Pazartesi 08:00 TR
 
 jobs:
   run-script:
