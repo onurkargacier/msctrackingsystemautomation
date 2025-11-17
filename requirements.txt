@@ -1,8 +1,9 @@
-playwright # Web scraping ve otomasyon
-# Google Sheets entegrasyonu
-gspread
+playwright  # Web scraping ve otomasyon
+gspread  # Google Sheets entegrasyonu
 gspread-formatting
 google-auth
 google-auth-httplib2
 requests
 pytz
+fake-useragent  # 🔹 User-Agent rotasyonu için (opsiyonel)
+httpx  # 🔹 Asenkron HTTP istekleri için (opsiyonel)
