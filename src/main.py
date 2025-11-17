@@ -1,5 +1,11 @@
+- **Concurrency varsayılanı 3** (eskiden 8 idi).  
+- **Her gemi için 2–7 saniye rastgele bekleme** eklendi.  
+- Kodun geri kalanı aynı, sadece scraping kısmında daha doğal davranış için eklemeler yapıldı.  
+
+```python
 import os
 import asyncio
+import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from zoneinfo import ZoneInfo  # TR saati için
@@ -32,7 +38,8 @@ LOG_HEADERS = [
     "Mesaj",
 ]
 
-DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "8"))
+# 🔹 concurrency varsayılanı düşürüldü (8 → 3)
+DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "3"))
 PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
 
 
@@ -167,7 +174,12 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
 
         async def task(bl: str):
             try:
-                return await get_eta_etd(bl, browser, sem)
+                data = await get_eta_etd(bl, browser, sem)
+
+                # 🔹 İnsan davranışına benzetmek için rastgele bekleme
+                await asyncio.sleep(random.uniform(2, 7))
+
+                return data
             except Exception as e:
                 print(f"[{bl}] ⚠️ Hata (üst seviye): {e}")
                 return {
@@ -216,51 +228,4 @@ def to_rows_and_changes(results: List[Dict[str, Any]], prev_map: Dict[str, Dict[
             bl,
             eta_new,
             kaynak,
-            etd_new,
-            now_tr,
-            note,
-        ])
-
-        for msg in (r.get("log") or []):
-            log_rows.append([now_tr, bl, msg])
-
-    return rows, changed_row_numbers, log_rows
-
-
-def main():
-    print(f"📄 Spreadsheet ID: {os.environ.get(SHEET_ID_ENV, '<yok>')}")
-    sh = open_sheet()
-
-    # Sayfaları hazırla
-    ws_data = ensure_worksheet(sh, SHEET_DATA, headers=DATA_HEADERS)
-    ws_log = ensure_worksheet(sh, SHEET_LOG, headers=LOG_HEADERS)
-
-    # Önceki değerler
-    prev_map = read_previous_map(ws_data)
-
-    # BL listesi
-    bl_list = read_bl_list(sh)
-    if not bl_list:
-        print("⚠️ BL listesi boş. Çıkılıyor.")
-        return
-
-    print(f"🔢 {len(bl_list)} konşimento bulundu. İşleniyor…")
-
-    # Asenkron çekim
-    results = asyncio.run(run_once(bl_list))
-
-    # Satırlar + değişim + loglar
-    rows, changed_row_numbers, log_rows = to_rows_and_changes(results, prev_map)
-
-    # Data'yı yaz ve boyama uygula
-    write_results(ws_data, rows)
-    apply_eta_change_format(ws_data, changed_row_numbers)
-
-    # Log'u ekle
-    append_logs(ws_log, log_rows)
-
-    print("✅ Tamamlandı.")
-
-
-if __name__ == "__main__":
-    main()
+            etd
