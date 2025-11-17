@@ -4,6 +4,7 @@ import requests
 import re
 import os
 import asyncio
+import random
 from typing import Dict, Any, List
 from playwright.async_api import async_playwright
 
@@ -33,18 +34,17 @@ IMPORT_TO_CONSIGNEE_ALIASES = {
 
 DEBUG_EVENTS = os.environ.get("DEBUG_EVENTS", "0") == "1"
 
+# 🔹 User-Agent listesi
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+]
+
 # ---- ana fonksiyonlar ----
 async def get_eta_etd(bl: str, browser, sem):
-    """
-    Döndürür:
-      {
-        "konşimento": BL,
-        "ETA (Date)": ...,
-        "Kaynak": ...,
-        "ETD": ...,
-        "log": [ "mesaj1", "mesaj2", ... ]
-      }
-    """
     async with sem:
         page = await browser.new_page()
         page.set_default_navigation_timeout(120000)
@@ -71,6 +71,9 @@ async def get_eta_etd(bl: str, browser, sem):
             token = await page.evaluate("() => document.querySelector('input[name=__RequestVerificationToken]')?.value")
             await page.close()
 
+            # 🔹 Rastgele User-Agent seç
+            ua = random.choice(USER_AGENTS)
+
             # 3️⃣ Pagination döngüsü
             api_url = "https://www.msc.com/api/feature/tools/TrackingInfo"
             payload = {"trackingNumber": bl, "trackingMode": "0"}
@@ -80,7 +83,7 @@ async def get_eta_etd(bl: str, browser, sem):
                 "Cookie": cookie_str,
                 "Origin": "https://www.msc.com",
                 "Referer": url,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                "User-Agent": ua,   # 🔹 artık sabit değil
                 "X-Requested-With": "XMLHttpRequest",
                 "__RequestVerificationToken": token,
             }
@@ -103,18 +106,17 @@ async def get_eta_etd(bl: str, browser, sem):
                 containers = bill.get("ContainersInfo", []) or []
                 all_containers.extend(containers)
 
-                # MSC API bazen “NextPageNumber” veya “PagingToken” döndürür
                 next_page = (data or {}).get("Data", {}).get("NextPageNumber")
                 if not next_page or next_page == page_number:
                     break
                 page_number += 1
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(random.uniform(1.0, 2.5))  # 🔹 bekleme süresi çeşitlendirildi
 
             if not all_containers:
                 logs.append("Hiç konteyner verisi alınamadı (tüm sayfalar tarandı).")
                 raise ValueError("ContainersInfo boş.")
 
-            # --- ETD (Export Loaded on Vessel) ---
+            # --- ETD ---
             export_events = [
                 (ev or {}).get("Date")
                 for c in all_containers
@@ -180,5 +182,6 @@ async def get_eta_etd(bl: str, browser, sem):
 
 async def init_browser():
     pw = await async_playwright().start()
-    browser = await pw.chromium.launch(headless=True)
+    # 🔹 Headless yerine headed mod daha güvenli olabilir
+    browser = await pw.chromium.launch(headless=False)
     return browser, pw
