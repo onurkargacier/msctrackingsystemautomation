@@ -2,8 +2,6 @@ name: MSC ETA Tracking Automation
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 5 * * 1'  # Her Pazartesi 08:00 TR
 
 jobs:
   run-script:
