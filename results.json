@@ -1,0 +1,32 @@
+{
+  "updated_at": "25.02.2026 18:16",
+  "rows": [
+    {
+      "konşimento": "MEDUPQ948635",
+      "ETA (Date)": "Bilinmiyor",
+      "Kaynak": "Bilinmiyor",
+      "ETD": "Bilinmiyor",
+      "log": [
+        "Hata: 403 Client Error: Forbidden for url: https://www.msc.com/api/feature/tools/TrackingInfo"
+      ]
+    },
+    {
+      "konşimento": "MEDUPQ999625",
+      "ETA (Date)": "Bilinmiyor",
+      "Kaynak": "Bilinmiyor",
+      "ETD": "Bilinmiyor",
+      "log": [
+        "Hata: 403 Client Error: Forbidden for url: https://www.msc.com/api/feature/tools/TrackingInfo"
+      ]
+    },
+    {
+      "konşimento": "MEDUW3083674",
+      "ETA (Date)": "Bilinmiyor",
+      "Kaynak": "Bilinmiyor",
+      "ETD": "Bilinmiyor",
+      "log": [
+        "Hata: 403 Client Error: Forbidden for url: https://www.msc.com/api/feature/tools/TrackingInfo"
+      ]
+    }
+  ]
+}
