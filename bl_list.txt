@@ -2,3 +2,6 @@
 # Bu satırlar yorum satırıdır, # ile başlayanlar işlenmez.
 # Örnek:
 # MEDUB1234567
+MEDUPQ948635
+MEDUPQ999625
+MEDUW3083674
