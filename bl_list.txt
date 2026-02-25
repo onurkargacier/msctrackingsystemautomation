@@ -1,0 +1,4 @@
+# Takip edilecek konşimento numaraları (her satıra bir tane)
+# Bu satırlar yorum satırıdır, # ile başlayanlar işlenmez.
+# Örnek:
+# MEDUB1234567

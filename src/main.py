@@ -1,264 +1,204 @@
 import os
 import asyncio
 import random
+import json
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
-from zoneinfo import ZoneInfo  # TR saati için
-import gspread
-from google.oauth2.service_account import Credentials
-from gspread_formatting import format_cell_ranges, CellFormat, Color
+from typing import List, Dict, Any
+from zoneinfo import ZoneInfo
 from msc_eta_scraper import get_eta_etd, init_browser
 
-# =========================
-# Konfig
-# =========================
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SHEET_ID_ENV = "SPREADSHEET_ID"
-SHEET_INPUT = "Input"
-SHEET_DATA = "Data"
-SHEET_LOG = "Log"
+BL_LIST_FILE = os.path.join(os.path.dirname(__file__), "..", "bl_list.txt")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "docs")
+OUTPUT_JSON = os.path.join(OUTPUT_DIR, "results.json")
+OUTPUT_HTML = os.path.join(OUTPUT_DIR, "index.html")
 
-DATA_HEADERS = [
-    "Konşimento",
-    "ETA (Date)",
-    "Kaynak",
-    "ETD",
-    "Çekim Zamanı (TR)",
-    "Not",
-]
-
-LOG_HEADERS = [
-    "Zaman (TR)",
-    "Konşimento",
-    "Mesaj",
-]
-
-# concurrency varsayılanı düşürüldü (8 → 3)
-DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "3"))
-PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
+DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "2"))
 
 
-# =========================
-# Yardımcılar
-# =========================
-def canon_date_str(s: str) -> str:
-    """Tarih metnini normalize eder: 14.08.2025 → 14082025"""
-    if not s:
-        return ""
-    s = s.strip()
-    if s.lower() == "bilinmiyor":
-        return ""
-    return "".join(ch for ch in s if ch.isdigit())
+def read_bl_list() -> List[str]:
+    path = os.path.abspath(BL_LIST_FILE)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"bl_list.txt bulunamadı: {path}")
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()
+    return [l.strip() for l in lines if l.strip() and not l.strip().startswith("#")]
 
 
-def open_sheet():
-    sheet_id = os.environ.get(SHEET_ID_ENV)
-    if not sheet_id:
-        raise RuntimeError("SPREADSHEET_ID ortam değişkeni yok.")
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    gc = gspread.authorize(creds)
-    sh = gc.open_by_key(sheet_id)
-    return sh
-
-
-def ensure_worksheet(sh, title: str, headers: Optional[List[str]] = None):
-    try:
-        ws = sh.worksheet(title)
-    except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=title, rows=2000, cols=20)
-        if headers:
-            end_col = chr(ord('A') + len(headers) - 1)
-            ws.update([headers], range_name=f"A1:{end_col}1")
-    return ws
-
-
-def read_bl_list(sh) -> List[str]:
-    """Input veya Data sayfasından konşimento listesini okur."""
-    try:
-        ws_in = sh.worksheet(SHEET_INPUT)
-        col = ws_in.col_values(1)
-        if col:
-            vals = [v.strip() for v in col[1:] if v and v.strip()]
-            if vals:
-                return vals
-    except gspread.WorksheetNotFound:
-        pass
-
-    try:
-        ws_data = sh.worksheet(SHEET_DATA)
-        col = ws_data.col_values(1)
-        if col:
-            vals = [v.strip() for v in col[1:] if v and v.strip()]
-            if vals:
-                return vals
-    except gspread.WorksheetNotFound:
-        pass
-
-    ws0 = sh.get_worksheet(0)
-    col = ws0.col_values(1)
-    return [v.strip() for v in col[1:] if v and v.strip()]
-
-
-def read_previous_map(ws_data) -> Dict[str, Dict[str, str]]:
-    """Data sayfasındaki önceki ETA/ETD değerlerini haritalar."""
-    rows = ws_data.get_all_values()
-    prev: Dict[str, Dict[str, str]] = {}
-    if not rows:
-        return prev
-    header = rows[0]
-    idx_bl = header.index("Konşimento") if "Konşimento" in header else 0
-    idx_eta = header.index("ETA (Date)") if "ETA (Date)" in header else 1
-    idx_etd = header.index("ETD") if "ETD" in header else 3
-    for r in rows[1:]:
-        if not r or len(r) <= idx_bl:
-            continue
-        bl = (r[idx_bl] or "").strip()
-        if not bl:
-            continue
-        eta_old = r[idx_eta] if len(r) > idx_eta else ""
-        etd_old = r[idx_etd] if len(r) > idx_etd else ""
-        prev[bl] = {"ETA": eta_old, "ETD": etd_old}
-    return prev
-
-
-def write_results(ws_data, rows: List[List[Any]]):
-    """Data sayfasına başlık + verileri tamamen üzerine yazar (parça parça)."""
-    ws_data.clear()
-    end_col = chr(ord('A') + len(DATA_HEADERS) - 1)
-    ws_data.update([DATA_HEADERS], range_name=f"A1:{end_col}1")
-
-    if not rows:
-        return
-
-    # Google API limitine takılmamak için 20'şerlik batchlerle yaz
-    batch_size = 20
-    for i in range(0, len(rows), batch_size):
-        chunk = rows[i:i + batch_size]
-        start_row = i + 2
-        end_row = start_row + len(chunk) - 1
-        ws_data.update(chunk, range_name=f"A{start_row}:{end_col}{end_row}")
-
-
-def append_logs(ws_log, log_rows: List[List[Any]]):
-    """Log sayfasına satır ekler; yoksa başlık yazar."""
-    existing = ws_log.get_all_values()
-    if not existing:
-        end_col = chr(ord('A') + len(LOG_HEADERS) - 1)
-        ws_log.update([LOG_HEADERS], range_name=f"A1:{end_col}1")
-    if log_rows:
-        ws_log.append_rows(log_rows, value_input_option="RAW")
-
-
-def apply_eta_change_format(ws_data, changed_rows_indices: List[int]):
-    """ETA değişen satırların B sütununu pastel kırmızıya boya."""
-    if not changed_rows_indices:
-        return
-    ranges = [(f"B{r}:B{r}", CellFormat(backgroundColor=PASTEL_RED)) for r in changed_rows_indices]
-    format_cell_ranges(ws_data, ranges)
-
-
-# =========================
-# Asenkron iş akışı
-# =========================
-async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
+async def run_scraper(bl_list: List[str]) -> List[Dict[str, Any]]:
     browser, pw = await init_browser()
-
     try:
         sem = asyncio.Semaphore(DEFAULT_CONCURRENCY)
 
         async def task(bl: str):
             try:
                 data = await get_eta_etd(bl, browser, sem)
-
-                # İnsan davranışına benzetmek için rastgele bekleme
                 await asyncio.sleep(random.uniform(2, 7))
-
                 return data
             except Exception as e:
-                print(f"[{bl}] ⚠️ Hata (üst seviye): {e}")
+                print(f"[{bl}] Hata: {e}")
                 return {
                     "konşimento": bl,
                     "ETA (Date)": "Bilinmiyor",
                     "Kaynak": "Bilinmiyor",
                     "ETD": "Bilinmiyor",
-                    "log": [f"üst seviye hata: {e}"],
+                    "log": [str(e)],
                 }
 
-        results = await asyncio.gather(*[task(bl) for bl in bl_list])
-
+        return await asyncio.gather(*[task(bl) for bl in bl_list])
     finally:
         await browser.close()
         await pw.stop()
 
-    return results
+
+def save_json(results: List[Dict[str, Any]], now_tr: str):
+    os.makedirs(os.path.abspath(OUTPUT_DIR), exist_ok=True)
+    payload = {"updated_at": now_tr, "rows": results}
+    with open(os.path.abspath(OUTPUT_JSON), "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
-def to_rows_and_changes(results: List[Dict[str, Any]], prev_map: Dict[str, Dict[str, str]]) -> Tuple[List[List[Any]], List[int], List[List[Any]]]:
-    """Sonuçları tablo satırlarına dönüştürür."""
-    now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).strftime("%Y-%m-%d %H:%M:%S")
-    rows: List[List[Any]] = []
-    changed_row_numbers: List[int] = []
-    log_rows: List[List[Any]] = []
+def save_html(results: List[Dict[str, Any]], now_tr: str):
+    os.makedirs(os.path.abspath(OUTPUT_DIR), exist_ok=True)
 
-    for i, r in enumerate(results, start=2):  # sheet row index
-        bl = (r.get("konşimento") or "").strip()
-        eta_new = (r.get("ETA (Date)") or "").strip()
-        etd_new = (r.get("ETD") or "").strip()
-        kaynak = (r.get("Kaynak") or "").strip()
-        eta_old = (prev_map.get(bl, {}).get("ETA", "") or "").strip()
+    rows_html = ""
+    for r in results:
+        bl = r.get("konşimento", "")
+        eta = r.get("ETA (Date)") or "Bilinmiyor"
+        etd = r.get("ETD") or "Bilinmiyor"
+        kaynak = r.get("Kaynak") or "-"
+        logs = r.get("log") or []
+        log_str = " | ".join(logs) if logs else ""
 
-        eta_new_cmp = canon_date_str(eta_new)
-        eta_old_cmp = canon_date_str(eta_old)
-        note = ""
+        eta_class = "unknown" if eta == "Bilinmiyor" else ""
+        etd_class = "unknown" if etd == "Bilinmiyor" else ""
 
-        if eta_new_cmp and (eta_new_cmp != eta_old_cmp):
-            if eta_old:
-                note = f"Tarih bilginiz değişti: {eta_old} → {eta_new}"
-            else:
-                note = f"Tarih bilginiz değişti: (yok) → {eta_new}"
-            changed_row_numbers.append(i)
+        rows_html += f"""
+        <tr>
+            <td class="bl">{bl}</td>
+            <td class="{eta_class}">{eta}</td>
+            <td class="{etd_class}">{etd}</td>
+            <td class="kaynak">{kaynak}</td>
+            <td class="log">{log_str}</td>
+        </tr>"""
 
-        rows.append([
-            bl,
-            eta_new,
-            kaynak,
-            etd_new,
-            now_tr,
-            note,
-        ])
+    html = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MSC Konşimento Takip</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f9;
+      color: #333;
+      padding: 24px;
+    }}
+    header {{
+      background: #1a3c6e;
+      color: white;
+      padding: 20px 24px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    header h1 {{ font-size: 1.4rem; font-weight: 600; }}
+    header .updated {{ font-size: 0.85rem; opacity: 0.85; }}
+    .count {{
+      background: white;
+      color: #1a3c6e;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }}
+    .table-wrap {{
+      overflow-x: auto;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }}
+    th {{
+      background: #1a3c6e;
+      color: white;
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }}
+    td {{
+      padding: 11px 16px;
+      border-bottom: 1px solid #edf0f4;
+      font-size: 0.9rem;
+      vertical-align: top;
+    }}
+    tr:last-child td {{ border-bottom: none; }}
+    tr:hover td {{ background: #f8fafd; }}
+    .bl {{ font-weight: 600; font-family: monospace; font-size: 0.95rem; }}
+    .unknown {{ color: #b0b8c5; font-style: italic; }}
+    .kaynak {{ color: #6b7a8d; font-size: 0.82rem; }}
+    .log {{ color: #e07a00; font-size: 0.78rem; max-width: 320px; }}
+    @media (max-width: 600px) {{
+      body {{ padding: 12px; }}
+      th, td {{ padding: 9px 10px; font-size: 0.82rem; }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MSC Konşimento Takip</h1>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span class="count">{len(results)} konşimento</span>
+      <span class="updated">Son guncelleme: {now_tr}</span>
+    </div>
+  </header>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Konşimento</th>
+          <th>ETA (Varis)</th>
+          <th>ETD (Kalkis)</th>
+          <th>Kaynak</th>
+          <th>Not</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows_html}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>"""
 
-        for msg in r.get("log", []):
-            log_rows.append([now_tr, bl, msg])
-
-    return rows, changed_row_numbers, log_rows
+    with open(os.path.abspath(OUTPUT_HTML), "w", encoding="utf-8") as f:
+        f.write(html)
 
 
-# =========================
-# Giriş noktası
-# =========================
 async def main():
-    print("Başlatılıyor...")
-    sh = open_sheet()
-    bl_list = read_bl_list(sh)
+    print("Baslatiliyor...")
+    bl_list = read_bl_list()
     if not bl_list:
-        print("Konşimento listesi boş, çıkılıyor.")
+        print("bl_list.txt bos, cikiliyor.")
         return
 
-    print(f"{len(bl_list)} konşimento işlenecek.")
+    print(f"{len(bl_list)} konsimento islenecek.")
+    results = await run_scraper(bl_list)
 
-    ws_data = ensure_worksheet(sh, SHEET_DATA, DATA_HEADERS)
-    ws_log = ensure_worksheet(sh, SHEET_LOG, LOG_HEADERS)
-
-    prev_map = read_previous_map(ws_data)
-    results = await run_once(bl_list)
-    rows, changed_rows, log_rows = to_rows_and_changes(results, prev_map)
-
-    write_results(ws_data, rows)
-    apply_eta_change_format(ws_data, changed_rows)
-    append_logs(ws_log, log_rows)
-
-    print(f"Tamamlandı. {len(rows)} kayıt yazıldı, {len(changed_rows)} ETA değişti.")
+    now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).strftime("%d.%m.%Y %H:%M")
+    save_json(results, now_tr)
+    save_html(results, now_tr)
+    print(f"Tamamlandi. {len(results)} kayit docs/ klasorune yazildi.")
 
 
 if __name__ == "__main__":
