@@ -1,9 +1,10 @@
-playwright  # Web scraping ve otomasyon
-gspread  # Google Sheets entegrasyonu
-gspread-formatting
-google-auth
-google-auth-httplib2
+playwright
 requests
-pytz
-fake-useragent  # 🔹 User-Agent rotasyonu için (opsiyonel)
-httpx  # 🔹 Asenkron HTTP istekleri için (opsiyonel)
+# Web uygulaması
+fastapi
+uvicorn[standard]
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+jinja2
+python-multipart
