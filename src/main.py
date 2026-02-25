@@ -1,8 +1,3 @@
-- **Concurrency varsayılanı 3** (eskiden 8 idi).  
-- **Her gemi için 2–7 saniye rastgele bekleme** eklendi.  
-- Kodun geri kalanı aynı, sadece scraping kısmında daha doğal davranış için eklemeler yapıldı.  
-
-```python
 import os
 import asyncio
 import random
@@ -38,7 +33,7 @@ LOG_HEADERS = [
     "Mesaj",
 ]
 
-# 🔹 concurrency varsayılanı düşürüldü (8 → 3)
+# concurrency varsayılanı düşürüldü (8 → 3)
 DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "3"))
 PASTEL_RED = Color(red=0.972, green=0.843, blue=0.855)  # #F8D7DA
 
@@ -135,7 +130,7 @@ def write_results(ws_data, rows: List[List[Any]]):
     if not rows:
         return
 
-    # 🔹 Google API limitine takılmamak için 20'şerlik batchlerle yaz
+    # Google API limitine takılmamak için 20'şerlik batchlerle yaz
     batch_size = 20
     for i in range(0, len(rows), batch_size):
         chunk = rows[i:i + batch_size]
@@ -176,7 +171,7 @@ async def run_once(bl_list: List[str]) -> List[Dict[str, Any]]:
             try:
                 data = await get_eta_etd(bl, browser, sem)
 
-                # 🔹 İnsan davranışına benzetmek için rastgele bekleme
+                # İnsan davranışına benzetmek için rastgele bekleme
                 await asyncio.sleep(random.uniform(2, 7))
 
                 return data
@@ -228,4 +223,43 @@ def to_rows_and_changes(results: List[Dict[str, Any]], prev_map: Dict[str, Dict[
             bl,
             eta_new,
             kaynak,
-            etd
+            etd_new,
+            now_tr,
+            note,
+        ])
+
+        for msg in r.get("log", []):
+            log_rows.append([now_tr, bl, msg])
+
+    return rows, changed_row_numbers, log_rows
+
+
+# =========================
+# Giriş noktası
+# =========================
+async def main():
+    print("Başlatılıyor...")
+    sh = open_sheet()
+    bl_list = read_bl_list(sh)
+    if not bl_list:
+        print("Konşimento listesi boş, çıkılıyor.")
+        return
+
+    print(f"{len(bl_list)} konşimento işlenecek.")
+
+    ws_data = ensure_worksheet(sh, SHEET_DATA, DATA_HEADERS)
+    ws_log = ensure_worksheet(sh, SHEET_LOG, LOG_HEADERS)
+
+    prev_map = read_previous_map(ws_data)
+    results = await run_once(bl_list)
+    rows, changed_rows, log_rows = to_rows_and_changes(results, prev_map)
+
+    write_results(ws_data, rows)
+    apply_eta_change_format(ws_data, changed_rows)
+    append_logs(ws_log, log_rows)
+
+    print(f"Tamamlandı. {len(rows)} kayıt yazıldı, {len(changed_rows)} ETA değişti.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

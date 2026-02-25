@@ -183,5 +183,5 @@ async def get_eta_etd(bl: str, browser, sem):
 async def init_browser():
     pw = await async_playwright().start()
     # 🔹 Headless yerine headed mod daha güvenli olabilir
-    browser = await pw.chromium.launch(headless=False)
+    browser = await pw.chromium.launch(headless=True)
     return browser, pw
