@@ -36,14 +36,31 @@ else:
 APP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = APP_DIR / "data.db"
 
-# ── Renkler ───────────────────────────────────────────────────────────────────
-NAVY   = "#1a3c6e"
-BG     = "#eef1f6"
-WHITE  = "#ffffff"
-GREEN  = "#16a34a"
-RED    = "#b91c1c"
-GRAY   = "#6b7a8d"
-BORDER = "#dde3ed"
+# ── Modern Profesyonel Tema ──────────────────────────────────────────────────
+# Soft, gözü rahatlatıcı renkler + modern kartlar
+
+# Temel renkler
+PRIMARY       = "#0f172a"      # Koyu navy (header)
+PRIMARY_LIGHT = "#1e40af"      # Soft navy (buttons)
+ACCENT        = "#0ea5e9"      # Parlak mavi (hover, accent)
+SUCCESS       = "#059669"      # Yeşil (başarı)
+ERROR         = "#dc2626"      # Kırmızı (hata)
+WARNING       = "#f59e0b"      # Turuncu (uyarı)
+
+# Nötr renkler
+BG_SOFT       = "#f0f9ff"      # Çok soft mavi arka plan
+CARD          = "#ffffff"      # Beyaz kartlar
+TEXT_DARK     = "#1e293b"      # Koyu metin
+TEXT_MUTED    = "#64748b"      # Gri metin
+BORDER        = "#cbd5e1"      # Soft border
+
+# Uyumlu alias'lar (eski kod için)
+NAVY   = PRIMARY_LIGHT
+BG     = BG_SOFT
+WHITE  = CARD
+GREEN  = SUCCESS
+RED    = ERROR
+GRAY   = TEXT_MUTED
 
 
 # ─── Veritabanı ───────────────────────────────────────────────────────────────
@@ -135,25 +152,40 @@ class SetupWindow(tk.Toplevel):
     """İlk açılışta browser kurulumu için pencere."""
     def __init__(self, parent, on_done):
         super().__init__(parent)
-        self.title("İlk Kurulum")
-        self.geometry("520x300")
+        self.title("⚙️  İlk Kurulum")
+        self.geometry("580x320")
         self.resizable(False, False)
-        self.configure(bg=WHITE)
+        self.configure(bg=BG_SOFT)
         self.grab_set()
         self._on_done = on_done
         self._success = False
 
-        tk.Label(self, text="MSC Takip — İlk Kurulum",
-                 bg=WHITE, fg=NAVY, font=("Segoe UI", 13, "bold")).pack(pady=(24, 4))
-        tk.Label(self, text="Playwright tarayıcısı indiriliyor (bir kez yapılır).",
-                 bg=WHITE, fg=GRAY, font=("Segoe UI", 10)).pack(pady=(0, 16))
+        # Header
+        hdr = tk.Frame(self, bg=ACCENT, height=50)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="MSC Takip — İlk Kurulum",
+                 bg=ACCENT, fg=CARD, font=("Segoe UI", 13, "bold")).pack(
+                     anchor="w", padx=16, pady=12)
 
-        self._text = tk.Text(self, height=7, font=("Courier New", 9),
-                              bg="#f4f6f9", relief="flat", state="disabled")
-        self._text.pack(fill="x", padx=24, pady=(0, 16))
+        # Content
+        content = tk.Frame(self, bg=CARD)
+        content.pack(fill="both", expand=True, padx=14, pady=14)
 
-        self._bar = ttk.Progressbar(self, mode="indeterminate")
-        self._bar.pack(fill="x", padx=24, pady=(0, 16))
+        tk.Label(content, text="🌐 Playwright Chromium tarayıcısı indiriliyor...",
+                 bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 10, "bold")).pack(
+                     anchor="w", pady=(0, 2))
+        tk.Label(content, text="(Bu işlem ilk açılışta bir kez yapılır, ~150 MB)",
+                 bg=CARD, fg=TEXT_MUTED, font=("Segoe UI", 9)).pack(
+                     anchor="w", pady=(0, 12))
+
+        self._text = tk.Text(content, height=7, font=("Courier New", 8),
+                              bg=BG_SOFT, fg=TEXT_DARK, relief="flat", state="disabled",
+                              padx=6, pady=6)
+        self._text.pack(fill="x", pady=(0, 12))
+
+        self._bar = ttk.Progressbar(content, mode="indeterminate")
+        self._bar.pack(fill="x", pady=(0, 12))
         self._bar.start(12)
 
         threading.Thread(target=self._run, daemon=True).start()
@@ -191,87 +223,121 @@ class ErrorWindow(tk.Toplevel):
     """Detaylı hata mesajı penceresi."""
     def __init__(self, parent, error_msg):
         super().__init__(parent)
-        self.title("Sorgu Hatası")
-        self.geometry("600x350")
+        self.title("⚠️  Sorgu Hatası")
+        self.geometry("650x400")
         self.resizable(True, True)
-        self.configure(bg=WHITE)
+        self.configure(bg=BG_SOFT)
         self.grab_set()
 
-        tk.Label(self, text="Sorgu Hatası Oluştu",
-                 bg=WHITE, fg=RED, font=("Segoe UI", 12, "bold")).pack(
-                     anchor="w", padx=16, pady=(16, 4))
+        # Header
+        hdr = tk.Frame(self, bg=ERROR, height=50)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="Sorgu Hatası Oluştu",
+                 bg=ERROR, fg=CARD, font=("Segoe UI", 12, "bold")).pack(
+                     anchor="w", padx=16, pady=12)
 
-        info = tk.Label(self,
-                        text="Lütfen aşağıdaki hata detaylarını kontrol edin:\n"
-                             "• İnternet bağlantısı?\n"
-                             "• MSC sitesi erişebiliyor musunuz?\n"
-                             "• Playwright kuruldu mu?",
-                        bg=WHITE, fg=GRAY, font=("Segoe UI", 9), justify="left")
-        info.pack(anchor="w", padx=16, pady=(0, 12))
+        # Content
+        content = tk.Frame(self, bg=CARD)
+        content.pack(fill="both", expand=True, padx=16, pady=16)
 
-        txt_frame = tk.Frame(self, bg=WHITE)
-        txt_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+        info = tk.Label(content,
+                        text="❌ Sorgu sırasında bir hata oluştu.\n\n"
+                             "Lütfen kontrol edin:\n"
+                             "  • İnternet bağlantısı\n"
+                             "  • MSC sitesi erişilebiliyor mu?\n"
+                             "  • Playwright kuruldu mu?",
+                        bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 10), justify="left")
+        info.pack(anchor="w", pady=(0, 12), fill="x")
+
+        # Hata detayları
+        tk.Label(content, text="Hata Detayları:",
+                 bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 9, "bold")).pack(
+                     anchor="w", pady=(8, 4))
+
+        txt_frame = tk.Frame(content, bg=CARD, relief="solid", bd=1)
+        txt_frame.pack(fill="both", expand=True, pady=(0, 12))
 
         sb = ttk.Scrollbar(txt_frame)
         sb.pack(side="right", fill="y")
         txt = scrolledtext.ScrolledText(
-            txt_frame, height=10, font=("Courier New", 9),
-            relief="solid", bd=1, bg="#f9fafb",
-            yscrollcommand=sb.set)
+            txt_frame, height=8, font=("Courier New", 8),
+            relief="flat", bd=0, bg=BG_SOFT, fg=TEXT_DARK,
+            yscrollcommand=sb.set, padx=8, pady=6)
         txt.pack(fill="both", expand=True)
         txt.insert("1.0", str(error_msg))
         txt.configure(state="disabled")
         sb.config(command=txt.yview)
 
-        tk.Button(self, text="Tamam", bg=NAVY, fg=WHITE,
-                  font=("Segoe UI", 10), relief="flat",
-                  padx=20, cursor="hand2", command=self.destroy).pack(
-                      pady=12)
+        # Buton
+        btn = tk.Button(content, text="Tamam", bg=PRIMARY_LIGHT, fg=CARD,
+                        font=("Segoe UI", 10, "bold"), relief="flat",
+                        padx=20, pady=8, cursor="hand2", command=self.destroy)
+        btn.pack()
+        btn.bind("<Enter>", lambda e: btn.config(bg=ACCENT))
+        btn.bind("<Leave>", lambda e: btn.config(bg=PRIMARY_LIGHT))
 
 
 class BatchAddWindow(tk.Toplevel):
     """Toplu konşimento ekleme penceresi."""
     def __init__(self, parent, on_submit):
         super().__init__(parent)
-        self.title("Toplu Konşimento Ekle")
-        self.geometry("550x380")
+        self.title("📦 Toplu Konşimento Ekle")
+        self.geometry("580x420")
         self.resizable(False, False)
-        self.configure(bg=WHITE)
+        self.configure(bg=BG_SOFT)
         self.grab_set()
         self._on_submit = on_submit
 
-        tk.Label(self, text="Toplu Konşimento Ekleme",
-                 bg=WHITE, fg=NAVY, font=("Segoe UI", 13, "bold")).pack(
-                     anchor="w", padx=20, pady=(16, 4))
+        # Header
+        hdr = tk.Frame(self, bg=PRIMARY_LIGHT, height=50)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="Toplu Konşimento Ekleme",
+                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 13, "bold")).pack(
+                     anchor="w", padx=16, pady=12)
 
-        info = tk.Label(self,
-                        text="Her satıra bir konşimento numarası yazın\n(MEDU1234567, MSCU9876543 gibi)",
-                        bg=WHITE, fg=GRAY, font=("Segoe UI", 9))
-        info.pack(anchor="w", padx=20, pady=(0, 12))
+        # Content
+        content = tk.Frame(self, bg=CARD)
+        content.pack(fill="both", expand=True, padx=14, pady=14)
 
-        txt_frame = tk.Frame(self, bg=WHITE)
-        txt_frame.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+        info = tk.Label(content,
+                        text="Her satıra bir konşimento numarası yazın:\n"
+                             "MEDU1234567, MSCU9876543, HAPAG123456\n"
+                             "⌛ Örnek: 10-15 BL'yi seçin (bulk işlemler daha hızlı)",
+                        bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 9), justify="left")
+        info.pack(anchor="w", pady=(0, 12), fill="x")
+
+        # Text input
+        txt_frame = tk.Frame(content, bg=CARD, relief="solid", bd=1)
+        txt_frame.pack(fill="both", expand=True, pady=(0, 12))
 
         sb = ttk.Scrollbar(txt_frame)
         sb.pack(side="right", fill="y")
         self._text = scrolledtext.ScrolledText(
             txt_frame, height=10, font=("Courier New", 10),
-            relief="solid", bd=1, bg="#f9fafb",
-            yscrollcommand=sb.set)
+            relief="flat", bd=0, bg=BG_SOFT, fg=TEXT_DARK,
+            yscrollcommand=sb.set, padx=8, pady=6, insertbackground=PRIMARY_LIGHT)
         self._text.pack(fill="both", expand=True)
         sb.config(command=self._text.yview)
 
-        btn_frame = tk.Frame(self, bg=WHITE)
-        btn_frame.pack(fill="x", padx=20, pady=(0, 14))
+        # Buttons
+        btn_frame = tk.Frame(content, bg=CARD)
+        btn_frame.pack(fill="x")
 
-        tk.Button(btn_frame, text="Ekle", bg=GREEN, fg=WHITE,
-                  font=("Segoe UI", 10, "bold"), relief="flat",
-                  padx=20, cursor="hand2", command=self._submit).pack(
-                      side="right", padx=(6, 0))
-        tk.Button(btn_frame, text="İptal", bg="#f3f4f6", fg=GRAY,
-                  font=("Segoe UI", 10), relief="flat",
-                  padx=20, cursor="hand2", command=self.destroy).pack(
-                      side="right")
+        btn_ekle = tk.Button(btn_frame, text="✅ Ekle", bg=SUCCESS, fg=CARD,
+                             font=("Segoe UI", 10, "bold"), relief="flat",
+                             padx=20, pady=8, cursor="hand2", command=self._submit)
+        btn_ekle.pack(side="right", padx=(6, 0))
+        btn_ekle.bind("<Enter>", lambda e: btn_ekle.config(bg=ACCENT))
+        btn_ekle.bind("<Leave>", lambda e: btn_ekle.config(bg=SUCCESS))
+
+        btn_iptal = tk.Button(btn_frame, text="✕ İptal", bg=BG_SOFT, fg=TEXT_DARK,
+                              font=("Segoe UI", 10), relief="flat",
+                              padx=20, pady=8, cursor="hand2", command=self.destroy)
+        btn_iptal.pack(side="right")
+        btn_iptal.bind("<Enter>", lambda e: btn_iptal.config(bg=BORDER))
+        btn_iptal.bind("<Leave>", lambda e: btn_iptal.config(bg=BG_SOFT))
 
     def _submit(self):
         text = self._text.get("1.0", "end").strip()
@@ -288,10 +354,10 @@ class BatchAddWindow(tk.Toplevel):
 class MSCApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("MSC Konşimento Takip")
+        self.title("MSC Konşimento Takip — Profesyonel Lojistik Yönetimi")
         self.geometry("1140x660")
         self.minsize(860, 500)
-        self.configure(bg=BG)
+        self.configure(bg=BG_SOFT)
 
         # Windows görev çubuğu ikonu
         try:
@@ -313,105 +379,164 @@ class MSCApp(tk.Tk):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # Header
-        hdr = tk.Frame(self, bg=NAVY, height=52)
+        # ── Header: Gradient-like effect ──
+        hdr = tk.Frame(self, bg=PRIMARY, height=56)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="MSC Konşimento Takip Sistemi",
-                 bg=NAVY, fg=WHITE, font=("Segoe UI", 13, "bold")).pack(
-                     side="left", padx=20, pady=12)
 
-        # Content
-        main = tk.Frame(self, bg=BG)
-        main.pack(fill="both", expand=True, padx=16, pady=14)
+        # Title
+        title_lbl = tk.Label(hdr, text="MSC Konşimento Takip Sistemi",
+                             bg=PRIMARY, fg=CARD, font=("Segoe UI", 14, "bold"))
+        title_lbl.pack(side="left", padx=20, pady=14)
 
-        # ── Sol panel ────────────────────────────────────────────────────────
-        left = tk.Frame(main, bg=WHITE, width=290,
-                        highlightthickness=1, highlightbackground=BORDER)
-        left.pack(side="left", fill="y", padx=(0, 14))
-        left.pack_propagate(False)
+        # Subtitle
+        sub_lbl = tk.Label(hdr, text="Profesyonel Lojistik Yönetimi",
+                          bg=PRIMARY, fg=ACCENT, font=("Segoe UI", 9, "italic"))
+        sub_lbl.pack(side="left", padx=0, pady=14)
 
-        tk.Label(left, text="KONŞİMENTO LİSTESİ",
-                 bg=WHITE, fg=GRAY, font=("Segoe UI", 8, "bold")).pack(
-                     anchor="w", padx=14, pady=(14, 2))
-        ttk.Separator(left, orient="horizontal").pack(fill="x", padx=14, pady=(4, 10))
+        # Content area: Soft background
+        main = tk.Frame(self, bg=BG_SOFT)
+        main.pack(fill="both", expand=True, padx=16, pady=16)
+
+        # ── Sol Panel (Kart) ────────────────────────────────────────────────────
+        # Shadow frame (sol panel için)
+        left_shadow = tk.Frame(main, bg=BG_SOFT, width=290, height=400)
+        left_shadow.pack(side="left", fill="y", padx=(0, 14))
+        left_shadow.pack_propagate(False)
+
+        # Ana card
+        left = tk.Frame(left_shadow, bg=CARD, width=290,
+                        relief="solid", bd=1)
+        left.place(in_=left_shadow, x=0, y=0, width=290, relheight=1.0)
+
+        # Header
+        header_frame = tk.Frame(left, bg=PRIMARY_LIGHT, height=48)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        tk.Label(header_frame, text="📋 KONŞİMENTO LİSTESİ",
+                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 10, "bold")).pack(
+                     anchor="w", padx=12, pady=10)
+
+        # Divider
+        ttk.Separator(left, orient="horizontal").pack(fill="x", padx=0, pady=0)
+
+        # Content padding
+        content = tk.Frame(left, bg=CARD)
+        content.pack(fill="both", expand=True, padx=12, pady=12)
 
         # Ekle formu
-        af = tk.Frame(left, bg=WHITE)
-        af.pack(fill="x", padx=14, pady=(0, 10))
+        af = tk.Frame(content, bg=CARD)
+        af.pack(fill="x", pady=(0, 8))
         self._entry = tk.Entry(af, font=("Courier New", 11),
-                               relief="solid", bd=1, bg="#f9fafb")
-        self._entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=5)
+                               relief="solid", bd=1, bg=BG_SOFT, fg=TEXT_DARK,
+                               insertbackground=PRIMARY_LIGHT)
+        self._entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=6)
         self._entry.bind("<Return>", lambda _: self._add_bl())
-        tk.Button(af, text="Ekle", bg=NAVY, fg=WHITE,
-                  font=("Segoe UI", 9, "bold"), relief="flat",
-                  padx=12, cursor="hand2", command=self._add_bl).pack(side="right")
+
+        # Ekle butonu (modern)
+        btn_ekle = tk.Button(af, text="➕ Ekle", bg=PRIMARY_LIGHT, fg=CARD,
+                             font=("Segoe UI", 9, "bold"), relief="flat",
+                             padx=12, pady=2, cursor="hand2", command=self._add_bl)
+        btn_ekle.pack(side="right")
+        btn_ekle.bind("<Enter>", lambda e: btn_ekle.config(bg=ACCENT))
+        btn_ekle.bind("<Leave>", lambda e: btn_ekle.config(bg=PRIMARY_LIGHT))
 
         # Toplu ekle butonu
-        tk.Button(left, text="Toplu Ekle", bg="#f3f4f6", fg=GRAY,
-                  font=("Segoe UI", 9), relief="flat", padx=8, pady=4,
-                  cursor="hand2", command=self._batch_add).pack(pady=(0, 10))
+        btn_batch = tk.Button(content, text="📦 Toplu Ekle", bg=BG_SOFT, fg=PRIMARY_LIGHT,
+                              font=("Segoe UI", 9), relief="flat", padx=8, pady=6,
+                              cursor="hand2", command=self._batch_add)
+        btn_batch.pack(fill="x", pady=(0, 8))
+        btn_batch.bind("<Enter>", lambda e: btn_batch.config(bg=ACCENT, fg=CARD))
+        btn_batch.bind("<Leave>", lambda e: btn_batch.config(bg=BG_SOFT, fg=PRIMARY_LIGHT))
 
-        # Liste
-        lf = tk.Frame(left, bg=WHITE)
-        lf.pack(fill="both", expand=True, padx=14)
+        # Liste container
+        lf = tk.Frame(content, bg=CARD)
+        lf.pack(fill="both", expand=True, pady=(0, 8))
+
         self._lb = tk.Listbox(lf, font=("Courier New", 10),
                               selectmode="single", relief="flat",
-                              bg="#f8fafd", bd=0,
-                              selectbackground="#dbeafe",
-                              selectforeground=NAVY,
-                              activestyle="none")
+                              bg=BG_SOFT, fg=TEXT_DARK, bd=0,
+                              selectbackground=ACCENT,
+                              selectforeground=CARD,
+                              activestyle="none", highlightthickness=0)
         self._lb.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(lf, orient="vertical", command=self._lb.yview)
         sb.pack(side="right", fill="y")
         self._lb.configure(yscrollcommand=sb.set)
 
-        tk.Button(left, text="Seçileni Kaldır", bg="#fee2e2", fg=RED,
-                  font=("Segoe UI", 9), relief="flat", padx=8, pady=5,
-                  cursor="hand2", command=self._delete_bl).pack(pady=12)
+        # Sil butonu
+        btn_sil = tk.Button(content, text="🗑️  Seçileni Kaldır", bg=ERROR, fg=CARD,
+                           font=("Segoe UI", 9), relief="flat", padx=8, pady=6,
+                           cursor="hand2", command=self._delete_bl)
+        btn_sil.pack(fill="x")
+        btn_sil.bind("<Enter>", lambda e: btn_sil.config(bg=WARNING))
+        btn_sil.bind("<Leave>", lambda e: btn_sil.config(bg=ERROR))
 
-        # ── Sağ panel ─────────────────────────────────────────────────────────
-        right = tk.Frame(main, bg=BG)
+        # ── Sağ Panel ──────────────────────────────────────────────────────────
+        right = tk.Frame(main, bg=BG_SOFT)
         right.pack(side="left", fill="both", expand=True)
 
-        # Sorgula + durum
-        top = tk.Frame(right, bg=WHITE,
-                       highlightthickness=1, highlightbackground=BORDER)
-        top.pack(fill="x", pady=(0, 12))
+        # ── Sorgula Kartı ──
+        top = tk.Frame(right, bg=CARD, relief="solid", bd=1)
+        top.pack(fill="x", pady=(0, 14))
 
-        self._run_btn = tk.Button(top, text="  Sorgula  ",
-                                  bg=GREEN, fg=WHITE,
+        top_content = tk.Frame(top, bg=CARD)
+        top_content.pack(fill="both", padx=14, pady=12)
+
+        # Sorgula butonu (highlight)
+        self._run_btn = tk.Button(top_content, text="🔍 SORGULA",
+                                  bg=SUCCESS, fg=CARD,
                                   font=("Segoe UI", 12, "bold"),
-                                  relief="flat", padx=20, pady=10,
+                                  relief="flat", padx=24, pady=10,
                                   cursor="hand2", command=self._run)
-        self._run_btn.pack(side="left", padx=16, pady=12)
+        self._run_btn.pack(side="left", padx=(0, 12))
+        self._run_btn.bind("<Enter>", lambda e: self._run_btn.config(bg=ACCENT))
+        self._run_btn.bind("<Leave>", lambda e: self._run_btn.config(
+            bg=SUCCESS if not self._scraping else SUCCESS))
+
+        # Status
+        status_frame = tk.Frame(top_content, bg=CARD)
+        status_frame.pack(side="left", fill="both", expand=True)
 
         self._status_var = tk.StringVar(value="Henüz sorgu yapılmadı.")
-        self._status_lbl = tk.Label(top, textvariable=self._status_var,
-                                     bg=WHITE, fg=GRAY, font=("Segoe UI", 10))
-        self._status_lbl.pack(side="left", padx=6)
+        self._status_lbl = tk.Label(status_frame, textvariable=self._status_var,
+                                     bg=CARD, fg=TEXT_MUTED, font=("Segoe UI", 10))
+        self._status_lbl.pack(anchor="w")
 
-        self._progress = ttk.Progressbar(top, mode="indeterminate", length=120)
+        self._progress = ttk.Progressbar(status_frame, mode="indeterminate", length=120)
 
-        # Sonuçlar tablosu
-        tbl_frame = tk.Frame(right, bg=WHITE,
-                             highlightthickness=1, highlightbackground=BORDER)
+        # ── Sonuçlar Kartı ──
+        tbl_frame = tk.Frame(right, bg=CARD, relief="solid", bd=1)
         tbl_frame.pack(fill="both", expand=True)
 
-        tk.Label(tbl_frame, text="SONUÇLAR",
-                 bg=WHITE, fg=GRAY, font=("Segoe UI", 8, "bold")).pack(
-                     anchor="w", padx=14, pady=(14, 2))
-        ttk.Separator(tbl_frame, orient="horizontal").pack(fill="x", padx=14, pady=(4, 8))
+        # Header
+        tbl_header = tk.Frame(tbl_frame, bg=PRIMARY_LIGHT, height=44)
+        tbl_header.pack(fill="x")
+        tbl_header.pack_propagate(False)
+        tk.Label(tbl_header, text="📊 SONUÇLAR",
+                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 10, "bold")).pack(
+                     anchor="w", padx=12, pady=10)
 
+        ttk.Separator(tbl_frame, orient="horizontal").pack(fill="x")
+
+        # Treeview styling
         st = ttk.Style()
-        st.configure("MSC.Treeview.Heading", font=("Segoe UI", 9, "bold"),
-                     background="#f4f6f9", foreground="#4a5568")
-        st.configure("MSC.Treeview", font=("Segoe UI", 10), rowheight=28)
-        st.map("MSC.Treeview", background=[("selected", "#dbeafe")])
+        st.configure("MSC.Treeview.Heading",
+                     font=("Segoe UI", 9, "bold"),
+                     background=BG_SOFT,
+                     foreground=TEXT_DARK)
+        st.configure("MSC.Treeview",
+                     font=("Segoe UI", 10),
+                     rowheight=30,
+                     background=BG_SOFT,
+                     foreground=TEXT_DARK)
+        st.map("MSC.Treeview",
+               background=[("selected", ACCENT)],
+               foreground=[("selected", CARD)])
 
         cols = ("Konşimento", "ETA (Varış)", "ETD (Kalkış)", "Kaynak", "Not")
-        tvf = tk.Frame(tbl_frame, bg=WHITE)
-        tvf.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+        tvf = tk.Frame(tbl_frame, bg=CARD)
+        tvf.pack(fill="both", expand=True, padx=12, pady=12)
 
         self._tree = ttk.Treeview(tvf, columns=cols, show="headings",
                                    style="MSC.Treeview", selectmode="browse")
@@ -427,9 +552,9 @@ class MSCApp(tk.Tk):
         sbx.pack(side="bottom", fill="x")
         self._tree.pack(fill="both", expand=True)
 
-        # Renk etiketleri
-        self._tree.tag_configure("unknown", foreground="#9aa5b4")
-        self._tree.tag_configure("ok", foreground="#15803d")
+        # Sonuç etiketleri
+        self._tree.tag_configure("unknown", foreground=WARNING)  # Turuncu: bilinmiyor
+        self._tree.tag_configure("ok", foreground=SUCCESS)      # Yeşil: başarılı
 
     # ── Veri ─────────────────────────────────────────────────────────────────
 
