@@ -10,9 +10,10 @@ import threading
 import sqlite3
 import subprocess
 import random
+import traceback
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 
 # ── Scraper yolu ──────────────────────────────────────────────────────────────
 if getattr(sys, "frozen", False):
@@ -183,6 +184,102 @@ class SetupWindow(tk.Toplevel):
         self._on_done(self._success)
 
 
+class ErrorWindow(tk.Toplevel):
+    """Detaylı hata mesajı penceresi."""
+    def __init__(self, parent, error_msg):
+        super().__init__(parent)
+        self.title("Sorgu Hatası")
+        self.geometry("600x350")
+        self.resizable(True, True)
+        self.configure(bg=WHITE)
+        self.grab_set()
+
+        tk.Label(self, text="Sorgu Hatası Oluştu",
+                 bg=WHITE, fg=RED, font=("Segoe UI", 12, "bold")).pack(
+                     anchor="w", padx=16, pady=(16, 4))
+
+        info = tk.Label(self,
+                        text="Lütfen aşağıdaki hata detaylarını kontrol edin:\n"
+                             "• İnternet bağlantısı?\n"
+                             "• MSC sitesi erişebiliyor musunuz?\n"
+                             "• Playwright kuruldu mu?",
+                        bg=WHITE, fg=GRAY, font=("Segoe UI", 9), justify="left")
+        info.pack(anchor="w", padx=16, pady=(0, 12))
+
+        txt_frame = tk.Frame(self, bg=WHITE)
+        txt_frame.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+
+        sb = ttk.Scrollbar(txt_frame)
+        sb.pack(side="right", fill="y")
+        txt = scrolledtext.ScrolledText(
+            txt_frame, height=10, font=("Courier New", 9),
+            relief="solid", bd=1, bg="#f9fafb",
+            yscrollcommand=sb.set)
+        txt.pack(fill="both", expand=True)
+        txt.insert("1.0", str(error_msg))
+        txt.configure(state="disabled")
+        sb.config(command=txt.yview)
+
+        tk.Button(self, text="Tamam", bg=NAVY, fg=WHITE,
+                  font=("Segoe UI", 10), relief="flat",
+                  padx=20, cursor="hand2", command=self.destroy).pack(
+                      pady=12)
+
+
+class BatchAddWindow(tk.Toplevel):
+    """Toplu konşimento ekleme penceresi."""
+    def __init__(self, parent, on_submit):
+        super().__init__(parent)
+        self.title("Toplu Konşimento Ekle")
+        self.geometry("550x380")
+        self.resizable(False, False)
+        self.configure(bg=WHITE)
+        self.grab_set()
+        self._on_submit = on_submit
+
+        tk.Label(self, text="Toplu Konşimento Ekleme",
+                 bg=WHITE, fg=NAVY, font=("Segoe UI", 13, "bold")).pack(
+                     anchor="w", padx=20, pady=(16, 4))
+
+        info = tk.Label(self,
+                        text="Her satıra bir konşimento numarası yazın\n(MEDU1234567, MSCU9876543 gibi)",
+                        bg=WHITE, fg=GRAY, font=("Segoe UI", 9))
+        info.pack(anchor="w", padx=20, pady=(0, 12))
+
+        txt_frame = tk.Frame(self, bg=WHITE)
+        txt_frame.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+
+        sb = ttk.Scrollbar(txt_frame)
+        sb.pack(side="right", fill="y")
+        self._text = scrolledtext.ScrolledText(
+            txt_frame, height=10, font=("Courier New", 10),
+            relief="solid", bd=1, bg="#f9fafb",
+            yscrollcommand=sb.set)
+        self._text.pack(fill="both", expand=True)
+        sb.config(command=self._text.yview)
+
+        btn_frame = tk.Frame(self, bg=WHITE)
+        btn_frame.pack(fill="x", padx=20, pady=(0, 14))
+
+        tk.Button(btn_frame, text="Ekle", bg=GREEN, fg=WHITE,
+                  font=("Segoe UI", 10, "bold"), relief="flat",
+                  padx=20, cursor="hand2", command=self._submit).pack(
+                      side="right", padx=(6, 0))
+        tk.Button(btn_frame, text="İptal", bg="#f3f4f6", fg=GRAY,
+                  font=("Segoe UI", 10), relief="flat",
+                  padx=20, cursor="hand2", command=self.destroy).pack(
+                      side="right")
+
+    def _submit(self):
+        text = self._text.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Uyarı", "Lütfen en az bir konşimento girin.", parent=self)
+            return
+        lines = [line.strip().upper() for line in text.split("\n") if line.strip()]
+        self._on_submit(lines)
+        self.destroy()
+
+
 # ─── Ana Uygulama ─────────────────────────────────────────────────────────────
 
 class MSCApp(tk.Tk):
@@ -246,6 +343,11 @@ class MSCApp(tk.Tk):
         tk.Button(af, text="Ekle", bg=NAVY, fg=WHITE,
                   font=("Segoe UI", 9, "bold"), relief="flat",
                   padx=12, cursor="hand2", command=self._add_bl).pack(side="right")
+
+        # Toplu ekle butonu
+        tk.Button(left, text="Toplu Ekle", bg="#f3f4f6", fg=GRAY,
+                  font=("Segoe UI", 9), relief="flat", padx=8, pady=4,
+                  cursor="hand2", command=self._batch_add).pack(pady=(0, 10))
 
         # Liste
         lf = tk.Frame(left, bg=WHITE)
@@ -364,6 +466,28 @@ class MSCApp(tk.Tk):
         db_delete_bl(bl_id)
         self._load_bls()
 
+    def _batch_add(self):
+        BatchAddWindow(self, on_submit=self._on_batch_submit)
+
+    def _on_batch_submit(self, bl_list):
+        added = 0
+        duplicates = []
+        for bl in bl_list:
+            if not bl.replace("-", "").isalnum() or len(bl) < 6:
+                duplicates.append(f"'{bl}' (geçersiz)")
+                continue
+            if db_add_bl(bl):
+                added += 1
+            else:
+                duplicates.append(bl)
+        self._load_bls()
+        msg = f"{added} konşimento eklendi."
+        if duplicates:
+            msg += f"\n\n{len(duplicates)} zaten listede veya geçersiz:\n" + ", ".join(duplicates[:5])
+            if len(duplicates) > 5:
+                msg += f"\n... ve {len(duplicates) - 5} tane daha"
+        messagebox.showinfo("Toplu Ekleme", msg, parent=self)
+
     # ── Sorgula ──────────────────────────────────────────────────────────────
 
     def _run(self):
@@ -392,7 +516,8 @@ class MSCApp(tk.Tk):
             db_save_results(results)
             self.after(0, self._on_done, results, None)
         except Exception as e:
-            self.after(0, self._on_done, [], str(e))
+            error_detail = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
+            self.after(0, self._on_done, [], error_detail)
         finally:
             loop.close()
 
@@ -424,9 +549,10 @@ class MSCApp(tk.Tk):
         self._progress.pack_forget()
         self._run_btn.configure(state="normal", text="  Tekrar Sorgula  ")
         if error:
-            self._status_var.set(f"Hata oluştu.")
+            self._status_var.set("Hata oluştu.")
             self._status_lbl.configure(fg=RED)
-            messagebox.showerror("Sorgu Hatası", f"{error}", parent=self)
+            # Detaylı hata penceresini aç
+            ErrorWindow(self, error)
         else:
             self._status_var.set(f"Tamamlandı — {len(results)} konşimento sorgulandı.")
             self._status_lbl.configure(fg="#15803d")
