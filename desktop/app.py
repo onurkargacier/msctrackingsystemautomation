@@ -123,23 +123,41 @@ def db_get_results():
 # ─── İlk kurulum: Playwright browser ─────────────────────────────────────────
 
 def _playwright_installed() -> bool:
-    """Playwright chromium'un indirilip indirilmediğini kontrol et."""
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            browser.close()
-        return True
-    except Exception:
+    """Playwright chromium binary'si indirilmiş mi? Dosya varlığından kontrol et."""
+    # Windows: %LOCALAPPDATA%\ms-playwright\chromium-*/chrome-win/chrome.exe
+    # Linux/Mac: ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
+        pattern, exe_name = "chromium*", "chrome-win/chrome.exe"
+    else:
+        base = Path.home() / ".cache" / "ms-playwright"
+        pattern, exe_name = "chromium*", "chrome-linux/chrome"
+
+    if not base.exists():
         return False
+    for d in base.iterdir():
+        if d.is_dir() and d.name.startswith("chromium"):
+            if (d / exe_name).exists():
+                return True
+    return False
 
 def _install_browser(log_callback):
     """playwright install chromium komutunu çalıştır."""
     log_callback("Playwright Chromium indiriliyor, lütfen bekleyin...\n")
-    result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
-        capture_output=True, text=True
-    )
+
+    # EXE durumunda sys.executable Python değil, playwright driver'ını kullan
+    if getattr(sys, "frozen", False):
+        # PyInstaller: playwright driver _MEIPASS/playwright/driver/ altında
+        driver = Path(sys._MEIPASS) / "playwright" / "driver" / "playwright.exe"
+        if driver.exists():
+            cmd = [str(driver), "install", "chromium"]
+        else:
+            log_callback(f"HATA: Playwright driver bulunamadı.\nBeklenen: {driver}\n")
+            return False
+    else:
+        cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
         log_callback("Kurulum tamamlandı!\n")
         return True

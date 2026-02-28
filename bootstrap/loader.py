@@ -13,6 +13,15 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 import traceback
 
+
+def _show_error(title, msg):
+    """Windowed EXE'de hata mesajı göster (konsolsuz çalışır)."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, str(msg), str(title), 0x10)  # MB_ICONERROR
+    else:
+        print(f"HATA [{title}]: {msg}")
+
 # ── Sabitler ─────────────────────────────────────────────────────────────────
 
 GITHUB_OWNER = "onurkargacier"
@@ -118,10 +127,12 @@ def run_app():
     app_py = APP_CODE_DIR / "desktop" / "app.py"
 
     if not app_py.exists():
-        print(f"HATA: {app_py} bulunamadı!")
-        print(f"App directory: {APP_CODE_DIR}")
-        print(f"Lütfen uygulamayı yeniden başlatın.")
-        input("Devam etmek için Enter'a basın...")
+        _show_error(
+            "Uygulama Bulunamadı",
+            f"Uygulama dosyası bulunamadı:\n{app_py}\n\n"
+            "İnternet bağlantınızı kontrol edip uygulamayı yeniden başlatın.\n\n"
+            f"Beklenen konum: {APP_CODE_DIR}"
+        )
         return False
 
     # sys.path'e app dizinini ekle
@@ -144,9 +155,11 @@ def run_app():
             return False
 
     except Exception as e:
-        print(f"HATA: Uygulama çalıştırılırken sorun oluştu:")
-        print(traceback.format_exc())
-        input("Devam etmek için Enter'a basın...")
+        _show_error(
+            "Uygulama Başlatılamadı",
+            f"Uygulama çalıştırılırken hata oluştu:\n\n{type(e).__name__}: {e}\n\n"
+            f"{traceback.format_exc()[:800]}"
+        )
         return False
 
 
@@ -161,6 +174,8 @@ if __name__ == "__main__":
         run_app()
 
     except Exception as e:
-        print(f"Uygulamada kritik hata: {e}")
-        print(traceback.format_exc())
-        input("Devam etmek için Enter'a basın...")
+        _show_error(
+            "Kritik Hata",
+            f"Uygulama başlatılamadı:\n\n{type(e).__name__}: {e}\n\n"
+            f"{traceback.format_exc()[:800]}"
+        )
