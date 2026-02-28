@@ -27,39 +27,46 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pyinstaller-hooks-contrib
 
-      - name: Playwright driver yolunu bul
-        id: pw
+      - name: EXE üret (PyInstaller)
         shell: python
         run: |
-          import os, playwright
-          driver = os.path.join(os.path.dirname(playwright.__file__), "driver", "playwright.exe")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"driver={driver}\n")
-          print(f"Playwright driver: {driver}")
+          import subprocess, sys, os, playwright
+          from pathlib import Path
 
-      - name: EXE üret (PyInstaller)
-        run: |
-          pyinstaller `
-            --onefile `
-            --windowed `
-            --name "MSCTakip" `
-            --add-binary "${{ steps.pw.outputs.driver }};playwright/driver" `
-            --hidden-import "tkinter" `
-            --hidden-import "tkinter.ttk" `
-            --hidden-import "tkinter.scrolledtext" `
-            --hidden-import "playwright" `
-            --hidden-import "playwright.async_api" `
-            --hidden-import "playwright.sync_api" `
-            --hidden-import "playwright._impl._api_types" `
-            --hidden-import "playwright._impl._browser" `
-            --hidden-import "playwright._impl._browser_context" `
-            --hidden-import "playwright._impl._page" `
-            --hidden-import "playwright._impl._driver" `
-            --hidden-import "sqlite3" `
-            --hidden-import "asyncio" `
-            --hidden-import "requests" `
-            --hidden-import "importlib.util" `
-            bootstrap/loader.py
+          # Playwright driver binary'sini bul (platform-safe path)
+          driver = Path(playwright.__file__).parent / "driver" / "playwright.exe"
+          print(f"Playwright driver: {driver}")
+          print(f"Driver exists: {driver.exists()}")
+
+          cmd = [
+              sys.executable, "-m", "PyInstaller",
+              "--onefile",
+              "--windowed",
+              "--name", "MSCTakip",
+              "--hidden-import", "tkinter",
+              "--hidden-import", "tkinter.ttk",
+              "--hidden-import", "tkinter.scrolledtext",
+              "--hidden-import", "playwright",
+              "--hidden-import", "playwright.async_api",
+              "--hidden-import", "playwright.sync_api",
+              "--hidden-import", "playwright._impl._api_types",
+              "--hidden-import", "playwright._impl._browser",
+              "--hidden-import", "playwright._impl._browser_context",
+              "--hidden-import", "playwright._impl._page",
+              "--hidden-import", "playwright._impl._driver",
+              "--hidden-import", "sqlite3",
+              "--hidden-import", "asyncio",
+              "--hidden-import", "requests",
+              "--hidden-import", "importlib.util",
+          ]
+
+          # Playwright driver varsa ekle
+          if driver.exists():
+              cmd += ["--add-binary", f"{driver}:playwright/driver"]
+
+          cmd.append("bootstrap/loader.py")
+
+          result = subprocess.run(cmd, check=True)
 
       - name: EXE'yi artifact olarak yükle
         uses: actions/upload-artifact@v4
