@@ -25,7 +25,7 @@ jobs:
       - name: Bağımlılıkları kur
         run: |
           python -m pip install --upgrade pip
-          pip install playwright requests pyinstaller pillow
+          pip install -r requirements.txt pyinstaller
           python -m playwright install chromium
 
       - name: EXE üret (PyInstaller)
@@ -34,14 +34,17 @@ jobs:
             --onefile `
             --windowed `
             --name "MSCTakip" `
-            --add-data "src:src" `
+            --hidden-import "tkinter" `
+            --hidden-import "tkinter.ttk" `
+            --hidden-import "tkinter.scrolledtext" `
             --hidden-import "playwright" `
             --hidden-import "playwright.async_api" `
             --hidden-import "playwright.sync_api" `
             --hidden-import "sqlite3" `
             --hidden-import "asyncio" `
             --hidden-import "requests" `
-            desktop/app.py
+            --hidden-import "importlib.util" `
+            bootstrap/loader.py
 
       - name: EXE'yi artifact olarak yükle
         uses: actions/upload-artifact@v4

@@ -16,13 +16,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
 # ── Scraper yolu ──────────────────────────────────────────────────────────────
+# PyInstaller (.exe) veya direct python çalıştırması destekle
 if getattr(sys, "frozen", False):
-    # PyInstaller bundle içinden çalışıyor
     BASE_DIR = Path(sys._MEIPASS)
 else:
     BASE_DIR = Path(__file__).resolve().parent.parent
 
-sys.path.insert(0, str(BASE_DIR / "src"))
+# sys.path'e src kütüphanesi ekle (loader.py veya direct çalıştırma uyumluluğu)
+src_path = str(BASE_DIR / "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 # ── Veri klasörü ──────────────────────────────────────────────────────────────
 if sys.platform == "win32":
