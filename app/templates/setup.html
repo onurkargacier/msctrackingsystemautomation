@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kayıt Ol — MSC Takip</title>
+  <title>İlk Kurulum — MSC Takip</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -20,11 +20,28 @@
       box-shadow: 0 4px 24px rgba(0,0,0,0.10);
       padding: 40px 36px;
       width: 100%;
-      max-width: 380px;
+      max-width: 420px;
     }
-    .logo { text-align: center; margin-bottom: 28px; }
+    .logo { text-align: center; margin-bottom: 8px; }
     .logo h1 { font-size: 1.5rem; color: #1a3c6e; font-weight: 700; }
-    .logo p { color: #6b7a8d; font-size: 0.875rem; margin-top: 4px; }
+    .subtitle {
+      text-align: center;
+      font-size: 0.875rem;
+      color: #6b7a8d;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+    .badge {
+      display: inline-block;
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
     label { display: block; font-size: 0.85rem; font-weight: 500; color: #4a5568; margin-bottom: 5px; }
     input[type=text], input[type=password] {
       width: 100%;
@@ -59,32 +76,30 @@
       font-size: 0.875rem;
       margin-bottom: 16px;
     }
-    .footer { text-align: center; margin-top: 20px; font-size: 0.875rem; color: #6b7a8d; }
-    .footer a { color: #1a3c6e; text-decoration: none; font-weight: 500; }
-    .footer a:hover { text-decoration: underline; }
+    .hint { font-size: 0.8rem; color: #9aa5b4; margin-top: -10px; margin-bottom: 16px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">
-      <h1>MSC Takip</h1>
-      <p>Yeni hesap oluştur</p>
+    <div class="logo"><h1>MSC Takip</h1></div>
+    <div class="subtitle">
+      <span class="badge">İlk Kurulum</span><br>
+      Sistemi kullanmak için bir yönetici hesabı oluşturun.<br>
+      Bu adım yalnızca bir kez yapılır.
     </div>
     {% if error %}
     <div class="error">{{ error }}</div>
     {% endif %}
-    <form method="post" action="/register">
-      <label for="username">Kullanıcı Adı</label>
-      <input type="text" id="username" name="username" autocomplete="username" required autofocus minlength="3">
+    <form method="post" action="/setup">
+      <label for="username">Yönetici Kullanıcı Adı</label>
+      <input type="text" id="username" name="username" required autofocus minlength="3">
       <label for="password">Şifre</label>
-      <input type="password" id="password" name="password" autocomplete="new-password" required minlength="6">
+      <input type="password" id="password" name="password" required minlength="8">
+      <p class="hint">En az 8 karakter</p>
       <label for="password2">Şifre Tekrar</label>
-      <input type="password" id="password2" name="password2" autocomplete="new-password" required minlength="6">
-      <button class="btn" type="submit">Kayıt Ol</button>
+      <input type="password" id="password2" name="password2" required minlength="8">
+      <button class="btn" type="submit">Yönetici Hesabı Oluştur</button>
     </form>
-    <div class="footer">
-      Hesabın var mı? <a href="/login">Giriş Yap</a>
-    </div>
   </div>
 </body>
 </html>

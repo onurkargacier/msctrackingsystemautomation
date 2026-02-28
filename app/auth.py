@@ -30,15 +30,32 @@ class RequiresLogin(Exception):
     pass
 
 
-def get_current_user(token: str = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+class RequiresAdmin(Exception):
+    pass
+
+
+def _decode_user(token: str | None, db: Session) -> User | None:
     if not token:
-        raise RequiresLogin()
+        return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload["sub"])
     except (JWTError, KeyError, ValueError):
-        raise RequiresLogin()
-    user = db.query(User).filter(User.id == user_id).first()
+        return None
+    return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+
+
+def get_current_user(token: str = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+    user = _decode_user(token, db)
     if not user:
         raise RequiresLogin()
+    return user
+
+
+def get_current_admin(token: str = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+    user = _decode_user(token, db)
+    if not user:
+        raise RequiresLogin()
+    if not user.is_admin:
+        raise RequiresAdmin()
     return user

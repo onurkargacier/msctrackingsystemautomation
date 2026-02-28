@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 import os
@@ -14,6 +14,9 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
+    is_admin = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
     bl_numbers = relationship("BLNumber", back_populates="user", cascade="all, delete")
     jobs = relationship("Job", back_populates="user", cascade="all, delete")
 
@@ -21,7 +24,7 @@ class User(Base):
 class BLNumber(Base):
     __tablename__ = "bl_numbers"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # NULL = şirket ortak listesi
     bl = Column(String(50), nullable=False)
     user = relationship("User", back_populates="bl_numbers")
 
@@ -47,6 +50,16 @@ class Result(Base):
     kaynak = Column(String(100))
     log = Column(Text)
     job = relationship("Job", back_populates="results")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    username = Column(String(50))   # kullanıcı silinse de log'da kalsın
+    action = Column(String(50))     # login, query_start, query_done, query_fail, user_create, ...
+    detail = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 def create_tables():

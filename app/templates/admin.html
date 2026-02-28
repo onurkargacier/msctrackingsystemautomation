@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yönetim Paneli — MSC Takip</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #eef1f6;
+      min-height: 100vh;
+    }
+
+    nav {
+      background: #1a3c6e;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .brand { font-size: 1.1rem; font-weight: 700; }
+    .nav-right { display: flex; align-items: center; gap: 14px; }
+    .nav-btn {
+      color: white; text-decoration: none; background: rgba(255,255,255,0.12);
+      padding: 5px 14px; border-radius: 20px; font-size: 0.82rem;
+      border: none; cursor: pointer; transition: background .2s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.22); }
+    .badge-admin {
+      background: #f59e0b; color: #1c1c1c; font-size: 0.72rem; font-weight: 700;
+      padding: 2px 9px; border-radius: 20px; letter-spacing: 0.3px;
+    }
+
+    .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    @media (max-width: 700px) { .page { padding: 12px; } }
+
+    /* TABS */
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+    .tab {
+      padding: 9px 20px; border-radius: 8px 8px 0 0;
+      background: white; border: 1px solid #dde3ed; border-bottom: none;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer; color: #6b7a8d;
+      transition: color .15s, background .15s;
+    }
+    .tab.active { background: white; color: #1a3c6e; border-bottom: 2px solid white; }
+    .tab:hover:not(.active) { color: #1a3c6e; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .panel {
+      background: white;
+      border-radius: 0 10px 10px 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .panel-title {
+      font-size: 0.75rem; font-weight: 700; color: #6b7a8d;
+      text-transform: uppercase; letter-spacing: 0.6px;
+      margin-bottom: 16px; padding-bottom: 10px;
+      border-bottom: 1px solid #edf0f4;
+    }
+
+    /* TABLE */
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #edf0f4; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th {
+      background: #f4f6f9; color: #4a5568; padding: 10px 14px; text-align: left;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.4px; white-space: nowrap;
+    }
+    td { padding: 10px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbfc; }
+    .mono { font-family: monospace; font-weight: 700; font-size: 0.9rem; }
+    .badge-on { background: #dcfce7; color: #15803d; padding: 2px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+    .badge-off { background: #fee2e2; color: #b91c1c; padding: 2px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+    .badge-role { background: #eff6ff; color: #1e40af; padding: 2px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn-sm {
+      padding: 5px 12px; border: none; border-radius: 6px;
+      font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: opacity .2s;
+    }
+    .btn-sm:hover { opacity: 0.8; }
+    .btn-reset { background: #fff3cd; color: #856404; }
+    .btn-toggle { background: #e8f4fd; color: #1a6ca8; }
+    .btn-del { background: #fee2e2; color: #b91c1c; }
+
+    /* CREATE USER FORM */
+    .create-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) {
+      .create-form { grid-template-columns: 1fr 1fr; }
+    }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 0.82rem; font-weight: 500; color: #4a5568; }
+    .form-group input[type=text], .form-group input[type=password] {
+      padding: 9px 12px; border: 1px solid #d1d9e0; border-radius: 7px;
+      font-size: 0.875rem; outline: none;
+    }
+    .form-group input:focus { border-color: #1a3c6e; }
+    .form-group.checkbox { flex-direction: row; align-items: center; gap: 8px; padding-bottom: 2px; }
+    .form-group.checkbox label { font-size: 0.875rem; }
+    .btn-create {
+      padding: 9px 20px; background: #1a3c6e; color: white; border: none;
+      border-radius: 7px; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-create:hover { background: #15315a; }
+
+    /* BL Shared */
+    .bl-add-form { display: flex; gap: 8px; margin-bottom: 14px; }
+    .bl-add-form input {
+      flex: 1; max-width: 260px;
+      padding: 9px 12px; border: 1px solid #d1d9e0; border-radius: 7px;
+      font-size: 0.875rem; outline: none; text-transform: uppercase;
+    }
+    .bl-add-form input:focus { border-color: #1a3c6e; }
+    .btn-bl-add {
+      padding: 9px 18px; background: #1a3c6e; color: white; border: none;
+      border-radius: 7px; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-bl-add:hover { background: #15315a; }
+    .shared-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+    .shared-item {
+      display: flex; align-items: center; gap: 6px;
+      background: #f4f6f9; border-radius: 6px; padding: 5px 10px;
+      font-family: monospace; font-size: 0.875rem; font-weight: 600;
+    }
+    .btn-bl-del {
+      background: none; border: none; color: #aaa; cursor: pointer;
+      font-size: 0.95rem; line-height: 1; padding: 1px 3px;
+    }
+    .btn-bl-del:hover { color: #e53e3e; }
+
+    /* LOG */
+    .log-table td { font-size: 0.82rem; }
+    .log-action { font-family: monospace; font-size: 0.8rem; background: #f4f6f9; padding: 2px 7px; border-radius: 4px; }
+    .log-detail { color: #6b7a8d; max-width: 360px; word-break: break-word; }
+
+    /* MODAL */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: none; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: white; border-radius: 12px; padding: 28px 32px;
+      width: 100%; max-width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .modal h3 { font-size: 1rem; color: #1a3c6e; margin-bottom: 14px; }
+    .modal .new-pw {
+      font-family: monospace; font-size: 1.2rem; font-weight: 700;
+      background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+      padding: 12px; text-align: center; letter-spacing: 2px; margin-bottom: 16px;
+    }
+    .modal p { font-size: 0.875rem; color: #6b7a8d; margin-bottom: 16px; }
+    .btn-modal-close {
+      width: 100%; padding: 10px; background: #1a3c6e; color: white;
+      border: none; border-radius: 7px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+
+    /* TOAST */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: #b91c1c; color: white; padding: 12px 18px;
+      border-radius: 8px; font-size: 0.875rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: none; z-index: 200;
+    }
+    #toast.ok { background: #15803d; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">MSC Takip — Yönetim</span>
+  <div class="nav-right">
+    <span class="badge-admin">YÖNETİCİ</span>
+    <a class="nav-btn" href="/">Panele Dön</a>
+    <a class="nav-btn" href="/logout">Çıkış</a>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('users')">Kullanıcılar</div>
+    <div class="tab" onclick="switchTab('shared')">Şirket Listesi</div>
+    <div class="tab" onclick="switchTab('logs')">İşlem Geçmişi</div>
+  </div>
+
+  <!-- KULLANICILAR -->
+  <div class="tab-content active" id="tab-users">
+    <div class="panel">
+      <div class="panel-title">Yeni Kullanıcı Oluştur</div>
+      <div class="create-form">
+        <div class="form-group">
+          <label>Kullanıcı Adı</label>
+          <input type="text" id="newUsername" placeholder="kullanici" minlength="3">
+        </div>
+        <div class="form-group">
+          <label>Şifre (min 8)</label>
+          <input type="password" id="newPassword" placeholder="••••••••" minlength="8">
+        </div>
+        <div class="form-group checkbox">
+          <input type="checkbox" id="newIsAdmin">
+          <label for="newIsAdmin">Yönetici</label>
+        </div>
+        <button class="btn-create" onclick="createUser()">Oluştur</button>
+      </div>
+
+      <div class="panel-title">Mevcut Kullanıcılar</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Kullanıcı Adı</th>
+              <th>Rol</th>
+              <th>Durum</th>
+              <th>Kayıt Tarihi</th>
+              <th>İşlemler</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            {% for u in users %}
+            <tr id="user-{{ u.id }}">
+              <td class="mono">{{ u.username }}</td>
+              <td>
+                {% if u.is_admin %}
+                <span class="badge-role">Yönetici</span>
+                {% else %}
+                <span style="color:#9aa5b4;font-size:.82rem;">Kullanıcı</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="{% if u.is_active %}badge-on{% else %}badge-off{% endif %}" id="status-{{ u.id }}">
+                  {{ 'Aktif' if u.is_active else 'Pasif' }}
+                </span>
+              </td>
+              <td style="color:#6b7a8d;font-size:.82rem;">{{ u.created_at.strftime('%d.%m.%Y') if u.created_at else '-' }}</td>
+              <td>
+                {% if u.id != admin.id %}
+                <div class="actions">
+                  <button class="btn-sm btn-reset" onclick="resetPassword({{ u.id }}, '{{ u.username }}')">Şifre Sıfırla</button>
+                  <button class="btn-sm btn-toggle" id="toggleBtn-{{ u.id }}" onclick="toggleUser({{ u.id }})">
+                    {{ 'Pasif Yap' if u.is_active else 'Aktif Yap' }}
+                  </button>
+                  <button class="btn-sm btn-del" onclick="deleteUser({{ u.id }}, '{{ u.username }}')">Sil</button>
+                </div>
+                {% else %}
+                <span style="color:#b0b8c5;font-size:.8rem;">— siz —</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ŞİRKET LİSTESİ -->
+  <div class="tab-content" id="tab-shared">
+    <div class="panel">
+      <div class="panel-title">Şirket Ortak Konşimento Listesi</div>
+      <p style="font-size:.875rem;color:#6b7a8d;margin-bottom:16px;">
+        Bu listeki konşimentolar tüm kullanıcıların "Sorgula" işlemine otomatik dahil edilir.
+      </p>
+      <div class="bl-add-form">
+        <input type="text" id="sharedBLInput" placeholder="MEDU1234567" maxlength="30">
+        <button class="btn-bl-add" onclick="addSharedBL()">Ekle</button>
+      </div>
+      <ul class="shared-list" id="sharedList">
+        {% for item in shared_bls %}
+        <li class="shared-item" id="sbl-{{ item.id }}">
+          <span>{{ item.bl }}</span>
+          <button class="btn-bl-del" onclick="removeSharedBL({{ item.id }})" title="Kaldır">&#10005;</button>
+        </li>
+        {% else %}
+        <li style="color:#b0b8c5;font-size:.875rem;" id="sharedEmptyHint">Henüz eklenmedi.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- İŞLEM GEÇMİŞİ -->
+  <div class="tab-content" id="tab-logs">
+    <div class="panel">
+      <div class="panel-title">Son 200 İşlem</div>
+      <div class="table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr><th>Tarih / Saat</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th></tr>
+          </thead>
+          <tbody>
+            {% for entry in logs %}
+            <tr>
+              <td style="white-space:nowrap;color:#6b7a8d;font-size:.82rem;">
+                {{ entry.created_at.strftime('%d.%m.%Y %H:%M') if entry.created_at else '-' }}
+              </td>
+              <td class="mono" style="font-size:.85rem;">{{ entry.username or '-' }}</td>
+              <td><span class="log-action">{{ entry.action }}</span></td>
+              <td class="log-detail">{{ entry.detail or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align:center;color:#b0b8c5;padding:32px;">İşlem kaydı yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Şifre Sıfırlama Modal -->
+<div class="modal-bg" id="pwModal">
+  <div class="modal">
+    <h3>Şifre Sıfırlandı</h3>
+    <p>Kullanıcı: <strong id="modalUsername"></strong></p>
+    <div class="new-pw" id="modalNewPw"></div>
+    <p>Bu şifreyi kullanıcıya iletin. Sayfa kapatıldıktan sonra bir daha görüntülenemez.</p>
+    <button class="btn-modal-close" onclick="closeModal()">Tamam, Kopyaladım</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── TAB ──────────────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      const names = ['users', 'shared', 'logs'];
+      t.classList.toggle('active', names[i] === name);
+    });
+    document.querySelectorAll('.tab-content').forEach(c => {
+      c.classList.toggle('active', c.id === `tab-${name}`);
+    });
+  }
+
+  // ── KULLANICI OLUŞTUR ─────────────────────────────────────────────────────
+  async function createUser() {
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value;
+    const isAdmin = document.getElementById('newIsAdmin').checked;
+    if (!username || !password) { showToast('Kullanıcı adı ve şifre gerekli'); return; }
+    const form = new FormData();
+    form.append('username', username);
+    form.append('password', password);
+    if (isAdmin) form.append('is_admin', 'on');
+    try {
+      const res = await fetch('/admin/users/create', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      showToast(`"${data.username}" oluşturuldu. Sayfayı yenileyin.`, true);
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('newIsAdmin').checked = false;
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  // ── ŞİFRE SIFIRLA ────────────────────────────────────────────────────────
+  async function resetPassword(userId, username) {
+    if (!confirm(`"${username}" kullanıcısının şifresi sıfırlansın mı?`)) return;
+    try {
+      const res = await fetch(`/admin/users/${userId}/reset-password`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      document.getElementById('modalUsername').textContent = username;
+      document.getElementById('modalNewPw').textContent = data.new_password;
+      document.getElementById('pwModal').classList.add('open');
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  function closeModal() {
+    document.getElementById('pwModal').classList.remove('open');
+  }
+
+  // ── AKTİF/PASİF ──────────────────────────────────────────────────────────
+  async function toggleUser(userId) {
+    try {
+      const res = await fetch(`/admin/users/${userId}/toggle-active`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      const badge = document.getElementById(`status-${userId}`);
+      const btn = document.getElementById(`toggleBtn-${userId}`);
+      if (data.is_active) {
+        badge.className = 'badge-on'; badge.textContent = 'Aktif'; btn.textContent = 'Pasif Yap';
+      } else {
+        badge.className = 'badge-off'; badge.textContent = 'Pasif'; btn.textContent = 'Aktif Yap';
+      }
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  // ── SİL ──────────────────────────────────────────────────────────────────
+  async function deleteUser(userId, username) {
+    if (!confirm(`"${username}" kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`)) return;
+    try {
+      const res = await fetch(`/admin/users/${userId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      const row = document.getElementById(`user-${userId}`);
+      if (row) row.remove();
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  // ── SHARED BL ─────────────────────────────────────────────────────────────
+  async function addSharedBL() {
+    const input = document.getElementById('sharedBLInput');
+    const bl = input.value.trim().toUpperCase();
+    if (!bl) return;
+    const form = new FormData(); form.append('bl', bl);
+    try {
+      const res = await fetch('/admin/shared-bl', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      const list = document.getElementById('sharedList');
+      const hint = document.getElementById('sharedEmptyHint');
+      if (hint) hint.remove();
+      const li = document.createElement('li');
+      li.className = 'shared-item'; li.id = `sbl-${data.id}`;
+      li.innerHTML = `<span>${data.bl}</span><button class="btn-bl-del" onclick="removeSharedBL(${data.id})" title="Kaldır">&#10005;</button>`;
+      list.appendChild(li);
+      input.value = '';
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  async function removeSharedBL(id) {
+    try {
+      const res = await fetch(`/admin/shared-bl/${id}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('Silinemedi'); return; }
+      const li = document.getElementById(`sbl-${id}`);
+      if (li) li.remove();
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  // ── YARDIMCILAR ──────────────────────────────────────────────────────────
+  function showToast(msg, success = false) {
+    const t = document.getElementById('toast');
+    t.className = success ? 'ok' : '';
+    t.textContent = msg; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3500);
+  }
+</script>
+</body>
+</html>

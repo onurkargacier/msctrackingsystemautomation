@@ -22,15 +22,8 @@
       width: 100%;
       max-width: 380px;
     }
-    .logo {
-      text-align: center;
-      margin-bottom: 28px;
-    }
-    .logo h1 {
-      font-size: 1.5rem;
-      color: #1a3c6e;
-      font-weight: 700;
-    }
+    .logo { text-align: center; margin-bottom: 28px; }
+    .logo h1 { font-size: 1.5rem; color: #1a3c6e; font-weight: 700; }
     .logo p { color: #6b7a8d; font-size: 0.875rem; margin-top: 4px; }
     label { display: block; font-size: 0.85rem; font-weight: 500; color: #4a5568; margin-bottom: 5px; }
     input[type=text], input[type=password] {
@@ -66,16 +59,13 @@
       font-size: 0.875rem;
       margin-bottom: 16px;
     }
-    .footer { text-align: center; margin-top: 20px; font-size: 0.875rem; color: #6b7a8d; }
-    .footer a { color: #1a3c6e; text-decoration: none; font-weight: 500; }
-    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">
       <h1>MSC Takip</h1>
-      <p>Konşimento takip sistemi</p>
+      <p>Kurumsal konşimento takip sistemi</p>
     </div>
     {% if error %}
     <div class="error">{{ error }}</div>
@@ -87,9 +77,6 @@
       <input type="password" id="password" name="password" autocomplete="current-password" required>
       <button class="btn" type="submit">Giriş Yap</button>
     </form>
-    <div class="footer">
-      Hesabın yok mu? <a href="/register">Kayıt Ol</a>
-    </div>
   </div>
 </body>
 </html>

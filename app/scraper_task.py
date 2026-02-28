@@ -7,13 +7,12 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from msc_eta_scraper import get_eta_etd, init_browser
-from app.database import SessionLocal, Job, Result
+from app.database import SessionLocal, Job, Result, AuditLog
 
-# job_id -> Thread
 _running_jobs: dict = {}
 
 
-async def _scrape(job_id: int, bl_list: list):
+async def _scrape(job_id: int, bl_list: list, user_id: int, username: str):
     db = SessionLocal()
     try:
         browser, pw = await init_browser()
@@ -51,6 +50,13 @@ async def _scrape(job_id: int, bl_list: list):
         if job:
             job.status = "completed"
             job.completed_at = datetime.utcnow()
+
+        db.add(AuditLog(
+            user_id=user_id,
+            username=username,
+            action="query_done",
+            detail=f"job_id={job_id}, {len(results)} sonuç",
+        ))
         db.commit()
 
     except Exception as e:
@@ -60,18 +66,24 @@ async def _scrape(job_id: int, bl_list: list):
         if job:
             job.status = "failed"
             job.completed_at = datetime.utcnow()
+        db.add(AuditLog(
+            user_id=user_id,
+            username=username,
+            action="query_fail",
+            detail=f"job_id={job_id}, hata: {str(e)[:300]}",
+        ))
         db.commit()
     finally:
         db.close()
 
 
-def start_job(job_id: int, bl_list: list):
-    """Her iş için ayrı bir thread + event loop kullan (Playwright uyumlu)."""
+def start_job(job_id: int, bl_list: list, user_id: int, username: str):
+    """Her iş için ayrı thread + event loop (Playwright uyumlu)."""
     def run():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(_scrape(job_id, bl_list))
+            loop.run_until_complete(_scrape(job_id, bl_list, user_id, username))
         except Exception as e:
             print(f"[job {job_id}] Thread hatası: {e}")
         finally:

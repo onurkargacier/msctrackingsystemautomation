@@ -12,7 +12,6 @@
       min-height: 100vh;
     }
 
-    /* NAV */
     nav {
       background: #1a3c6e;
       color: white;
@@ -24,32 +23,37 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      gap: 12px;
     }
-    nav .brand { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.3px; }
-    nav .user-info { display: flex; align-items: center; gap: 16px; font-size: 0.875rem; }
-    nav .user-info span { opacity: 0.85; }
-    nav a.logout {
+    .brand { font-size: 1.1rem; font-weight: 700; }
+    .nav-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .nav-right .username { font-size: 0.875rem; opacity: 0.85; }
+    .nav-btn {
       color: white;
       text-decoration: none;
-      background: rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.12);
       padding: 5px 14px;
       border-radius: 20px;
       font-size: 0.82rem;
+      border: none;
+      cursor: pointer;
       transition: background .2s;
     }
-    nav a.logout:hover { background: rgba(255,255,255,0.25); }
+    .nav-btn:hover { background: rgba(255,255,255,0.22); }
 
-    /* LAYOUT */
     .layout {
       display: flex;
       gap: 20px;
       padding: 24px;
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
+      align-items: flex-start;
     }
-    @media (max-width: 768px) { .layout { flex-direction: column; padding: 12px; } }
+    @media (max-width: 860px) {
+      .layout { flex-direction: column; padding: 12px; }
+      .left { width: 100%; }
+    }
 
-    /* PANEL */
     .panel {
       background: white;
       border-radius: 10px;
@@ -57,27 +61,28 @@
       padding: 20px;
     }
     .panel-title {
-      font-size: 0.875rem;
+      font-size: 0.75rem;
       font-weight: 700;
-      color: #1a3c6e;
+      color: #6b7a8d;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 16px;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
       padding-bottom: 10px;
-      border-bottom: 2px solid #eef1f6;
+      border-bottom: 1px solid #edf0f4;
     }
 
-    /* LEFT: BL management */
-    .left { width: 300px; flex-shrink: 0; align-self: flex-start; }
-    .add-form { display: flex; gap: 8px; margin-bottom: 16px; }
+    .left { width: 310px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; }
+
+    .add-form { display: flex; gap: 8px; margin-bottom: 12px; }
     .add-form input {
       flex: 1;
       padding: 8px 12px;
       border: 1px solid #d1d9e0;
       border-radius: 7px;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       outline: none;
       text-transform: uppercase;
+      min-width: 0;
     }
     .add-form input:focus { border-color: #1a3c6e; }
     .btn-add {
@@ -86,10 +91,9 @@
       color: white;
       border: none;
       border-radius: 7px;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background .2s;
       white-space: nowrap;
     }
     .btn-add:hover { background: #15315a; }
@@ -99,346 +103,318 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 10px;
+      padding: 7px 8px;
       border-radius: 6px;
       font-family: monospace;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-weight: 600;
-      transition: background .15s;
     }
     .bl-list li:hover { background: #f4f6f9; }
+    .bl-list.shared li { color: #5a6880; font-weight: 500; }
     .bl-del {
-      background: none;
-      border: none;
-      color: #ccc;
-      cursor: pointer;
-      font-size: 1.1rem;
-      line-height: 1;
-      padding: 2px 5px;
-      border-radius: 4px;
-      transition: color .15s, background .15s;
+      background: none; border: none; color: #ccc;
+      cursor: pointer; font-size: 1rem; padding: 2px 5px;
+      border-radius: 4px; transition: color .15s, background .15s;
     }
     .bl-del:hover { color: #e53e3e; background: #fff0f0; }
-    .empty-hint { color: #b0b8c5; font-size: 0.875rem; text-align: center; padding: 20px 0; }
+    .empty-hint { color: #b0b8c5; font-size: 0.82rem; padding: 6px 0; font-weight: 400; font-family: inherit; }
 
-    /* RUN button */
+    .right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+
     .btn-run {
-      display: block;
-      width: 100%;
-      padding: 13px;
-      background: #16a34a;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      margin-bottom: 16px;
-      transition: background .2s, opacity .2s;
-      letter-spacing: 0.3px;
+      display: block; width: 100%; padding: 13px;
+      background: #16a34a; color: white; border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 700; cursor: pointer; margin-bottom: 14px;
+      transition: background .2s, opacity .2s; letter-spacing: 0.3px;
     }
     .btn-run:hover:not(:disabled) { background: #15803d; }
     .btn-run:disabled { opacity: 0.65; cursor: not-allowed; }
 
-    /* RIGHT: Results */
-    .right { flex: 1; min-width: 0; }
-
-    /* STATUS */
     .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 0.875rem;
-      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 8px; font-size: 0.875rem;
     }
     .status-bar.running { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
     .status-bar.completed { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
     .status-bar.failed { background: #fff0f0; border: 1px solid #fca5a5; color: #b91c1c; }
     .status-bar.idle { background: #f8fafd; border: 1px solid #e2e8f0; color: #6b7a8d; }
     .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid #93c5fd;
-      border-top-color: #1e40af;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      flex-shrink: 0;
+      width: 16px; height: 16px; border: 2px solid #93c5fd;
+      border-top-color: #1e40af; border-radius: 50%;
+      animation: spin .8s linear infinite; flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* TABLE */
     .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #edf0f4; }
     table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
     th {
-      background: #f4f6f9;
-      color: #4a5568;
-      padding: 10px 14px;
-      text-align: left;
-      font-size: 0.78rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      white-space: nowrap;
+      background: #f4f6f9; color: #4a5568; padding: 10px 14px; text-align: left;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.4px; white-space: nowrap;
     }
     td { padding: 10px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: top; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #fafbfc; }
     .td-bl { font-family: monospace; font-weight: 700; font-size: 0.9rem; }
     .td-unknown { color: #b0b8c5; font-style: italic; }
-    .td-log { color: #e07a00; font-size: 0.78rem; max-width: 240px; word-break: break-word; }
+    .td-log { color: #e07a00; font-size: 0.78rem; max-width: 220px; word-break: break-word; }
     .no-results { text-align: center; color: #b0b8c5; padding: 32px; font-size: 0.875rem; }
 
-    /* error toast */
+    .pw-form { display: flex; flex-direction: column; gap: 10px; }
+    .pw-form input {
+      padding: 9px 12px; border: 1px solid #d1d9e0; border-radius: 7px;
+      font-size: 0.875rem; outline: none;
+    }
+    .pw-form input:focus { border-color: #1a3c6e; }
+    .btn-pw {
+      align-self: flex-start; padding: 8px 18px; background: #1a3c6e; color: white;
+      border: none; border-radius: 7px; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-pw:hover { background: #15315a; }
+    .pw-msg { font-size: 0.82rem; }
+    .pw-msg.ok { color: #15803d; }
+    .pw-msg.err { color: #b91c1c; }
+
     #toast {
-      position: fixed;
-      bottom: 24px; right: 24px;
-      background: #b91c1c;
-      color: white;
-      padding: 12px 18px;
-      border-radius: 8px;
-      font-size: 0.875rem;
+      position: fixed; bottom: 24px; right: 24px;
+      background: #b91c1c; color: white; padding: 12px 18px;
+      border-radius: 8px; font-size: 0.875rem;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      display: none;
-      z-index: 99;
+      display: none; z-index: 99;
     }
   </style>
 </head>
 <body>
-  <nav>
-    <span class="brand">MSC Takip Sistemi</span>
-    <div class="user-info">
-      <span>{{ user.username }}</span>
-      <a class="logout" href="/logout">Çıkış</a>
-    </div>
-  </nav>
 
-  <div class="layout">
-    <!-- LEFT: BL Yönetimi -->
-    <aside class="panel left">
-      <div class="panel-title">Konşimento Listesi</div>
+<nav>
+  <span class="brand">MSC Takip Sistemi</span>
+  <div class="nav-right">
+    {% if user.is_admin %}
+    <a class="nav-btn" href="/admin">Yönetim Paneli</a>
+    {% endif %}
+    <span class="username">{{ user.username }}</span>
+    <a class="nav-btn" href="/logout">Çıkış</a>
+  </div>
+</nav>
 
+<div class="layout">
+  <!-- SOL -->
+  <aside class="left">
+    <div class="panel">
+      <div class="panel-title">Özel Listem</div>
       <form class="add-form" id="addForm">
         <input type="text" id="blInput" placeholder="MEDU1234567" maxlength="30" required>
         <button class="btn-add" type="submit">Ekle</button>
       </form>
-
       <ul class="bl-list" id="blList">
-        {% for item in bl_numbers %}
+        {% for item in my_bls %}
         <li id="bl-{{ item.id }}">
           <span>{{ item.bl }}</span>
           <button class="bl-del" onclick="deleteBL({{ item.id }})" title="Kaldır">&#10005;</button>
         </li>
         {% else %}
-        <li class="empty-hint" id="emptyHint">Henüz konşimento eklemediniz.</li>
+        <li class="empty-hint" id="emptyHint">Henüz eklenmedi.</li>
         {% endfor %}
       </ul>
-    </aside>
+    </div>
 
-    <!-- RIGHT: Çalıştır + Sonuçlar -->
-    <main class="right">
-      <div class="panel" style="margin-bottom:16px;">
-        <button class="btn-run" id="runBtn" onclick="runJob()">Sorgula</button>
-        <div id="statusBar" class="status-bar {% if job %}{% if job.status == 'running' %}running{% elif job.status == 'completed' %}completed{% elif job.status == 'failed' %}failed{% else %}idle{% endif %}{% else %}idle{% endif %}">
-          {% if job %}
-            {% if job.status == 'running' %}
-              <div class="spinner"></div><span>Sorgu devam ediyor...</span>
-            {% elif job.status == 'completed' %}
-              <span>Son sorgu tamamlandı.</span>
-            {% elif job.status == 'failed' %}
-              <span>Son sorgu başarısız oldu.</span>
-            {% endif %}
-          {% else %}
-            <span>Henüz sorgu yapılmadı.</span>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-title">Sonuçlar</div>
-        <div id="resultsArea">
-          {% if results %}
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Konşimento</th>
-                  <th>ETA (Varış)</th>
-                  <th>ETD (Kalkış)</th>
-                  <th>Kaynak</th>
-                  <th>Not</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in results %}
-                <tr>
-                  <td class="td-bl">{{ r.bl }}</td>
-                  <td class="{% if not r.eta or r.eta == 'Bilinmiyor' %}td-unknown{% endif %}">{{ r.eta or 'Bilinmiyor' }}</td>
-                  <td class="{% if not r.etd or r.etd == 'Bilinmiyor' %}td-unknown{% endif %}">{{ r.etd or 'Bilinmiyor' }}</td>
-                  <td>{{ r.kaynak or '-' }}</td>
-                  <td class="td-log">{{ r.log or '' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-          <div class="no-results">Sonuç yok. "Sorgula" butonuna basın.</div>
-          {% endif %}
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <div id="toast"></div>
-
-  <script>
-    let pollInterval = null;
-
-    // ── BL Ekle ─────────────────────────────────────────────────────────────
-    document.getElementById('addForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const input = document.getElementById('blInput');
-      const bl = input.value.trim().toUpperCase();
-      if (!bl) return;
-
-      const form = new FormData();
-      form.append('bl', bl);
-
-      try {
-        const res = await fetch('/api/bl', { method: 'POST', body: form });
-        const data = await res.json();
-        if (!res.ok) { showToast(data.detail || 'Hata'); return; }
-
-        // Listeye ekle
-        const list = document.getElementById('blList');
-        const hint = document.getElementById('emptyHint');
-        if (hint) hint.remove();
-
-        const li = document.createElement('li');
-        li.id = `bl-${data.id}`;
-        li.innerHTML = `<span>${data.bl}</span><button class="bl-del" onclick="deleteBL(${data.id})" title="Kaldır">&#10005;</button>`;
-        list.appendChild(li);
-        input.value = '';
-      } catch { showToast('Bağlantı hatası'); }
-    });
-
-    // ── BL Sil ──────────────────────────────────────────────────────────────
-    async function deleteBL(id) {
-      try {
-        const res = await fetch(`/api/bl/${id}`, { method: 'DELETE' });
-        if (!res.ok) { showToast('Silinemedi'); return; }
-        const li = document.getElementById(`bl-${id}`);
-        if (li) li.remove();
-        // Boş liste kontrolü
-        const list = document.getElementById('blList');
-        if (!list.querySelector('li:not(.empty-hint)')) {
-          const hint = document.createElement('li');
-          hint.className = 'empty-hint';
-          hint.id = 'emptyHint';
-          hint.textContent = 'Henüz konşimento eklemediniz.';
-          list.appendChild(hint);
-        }
-      } catch { showToast('Bağlantı hatası'); }
-    }
-
-    // ── Sorgula ─────────────────────────────────────────────────────────────
-    async function runJob() {
-      const btn = document.getElementById('runBtn');
-      btn.disabled = true;
-      btn.textContent = 'Başlatılıyor...';
-
-      try {
-        const res = await fetch('/api/run', { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) { showToast(data.detail || 'Hata'); btn.disabled = false; btn.textContent = 'Sorgula'; return; }
-        setStatus('running', 'Sorgu devam ediyor...');
-        startPolling(data.job_id);
-      } catch { showToast('Bağlantı hatası'); btn.disabled = false; btn.textContent = 'Sorgula'; }
-    }
-
-    // ── Polling ─────────────────────────────────────────────────────────────
-    function startPolling(jobId) {
-      if (pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/job/${jobId}`);
-          const data = await res.json();
-          if (data.status === 'completed') {
-            clearInterval(pollInterval);
-            setStatus('completed', 'Sorgu tamamlandı.');
-            renderResults(data.results);
-            enableRunBtn();
-          } else if (data.status === 'failed') {
-            clearInterval(pollInterval);
-            setStatus('failed', 'Sorgu başarısız oldu.');
-            enableRunBtn();
-          }
-        } catch {}
-      }, 3000);
-    }
-
-    // ── Sayfa yüklendiğinde aktif iş var mı? ────────────────────────────────
-    {% if job and job.status == 'running' %}
-    startPolling({{ job.id }});
-    document.getElementById('runBtn').disabled = true;
-    document.getElementById('runBtn').textContent = 'Çalışıyor...';
+    {% if shared_bls %}
+    <div class="panel">
+      <div class="panel-title">Şirket Listesi</div>
+      <ul class="bl-list shared">
+        {% for item in shared_bls %}
+        <li><span>{{ item.bl }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
 
-    // ── Yardımcılar ──────────────────────────────────────────────────────────
-    function setStatus(type, msg) {
-      const bar = document.getElementById('statusBar');
-      bar.className = `status-bar ${type}`;
-      if (type === 'running') {
-        bar.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
-      } else {
-        bar.innerHTML = `<span>${msg}</span>`;
-      }
-    }
+    <div class="panel">
+      <div class="panel-title">Şifre Değiştir</div>
+      <div class="pw-form">
+        <input type="password" id="pwOld" placeholder="Mevcut şifre" autocomplete="current-password">
+        <input type="password" id="pwNew" placeholder="Yeni şifre (min 8)" autocomplete="new-password">
+        <button class="btn-pw" onclick="changePassword()">Güncelle</button>
+        <span class="pw-msg" id="pwMsg"></span>
+      </div>
+    </div>
+  </aside>
 
-    function enableRunBtn() {
-      const btn = document.getElementById('runBtn');
-      btn.disabled = false;
-      btn.textContent = 'Tekrar Sorgula';
-    }
+  <!-- SAĞ -->
+  <main class="right">
+    <div class="panel">
+      <button class="btn-run" id="runBtn" onclick="runJob()">Sorgula</button>
+      <div id="statusBar" class="status-bar {% if job %}{% if job.status == 'running' %}running{% elif job.status == 'completed' %}completed{% elif job.status == 'failed' %}failed{% else %}idle{% endif %}{% else %}idle{% endif %}">
+        {% if job %}
+          {% if job.status == 'running' %}
+            <div class="spinner"></div><span>Sorgu devam ediyor...</span>
+          {% elif job.status == 'completed' %}
+            <span>Son sorgu tamamlandı.</span>
+          {% elif job.status == 'failed' %}
+            <span>Son sorgu başarısız oldu.</span>
+          {% endif %}
+        {% else %}
+          <span>Henüz sorgu yapılmadı.</span>
+        {% endif %}
+      </div>
+    </div>
 
-    function renderResults(results) {
-      const area = document.getElementById('resultsArea');
-      if (!results || results.length === 0) {
-        area.innerHTML = '<div class="no-results">Sonuç bulunamadı.</div>';
-        return;
-      }
-      const rows = results.map(r => `
-        <tr>
-          <td class="td-bl">${esc(r.bl)}</td>
-          <td class="${r.eta === 'Bilinmiyor' ? 'td-unknown' : ''}">${esc(r.eta)}</td>
-          <td class="${r.etd === 'Bilinmiyor' ? 'td-unknown' : ''}">${esc(r.etd)}</td>
-          <td>${esc(r.kaynak)}</td>
-          <td class="td-log">${esc(r.log)}</td>
-        </tr>`).join('');
-      area.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Sonuçlar</div>
+      <div id="resultsArea">
+        {% if results %}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr>
-                <th>Konşimento</th><th>ETA (Varış)</th><th>ETD (Kalkış)</th><th>Kaynak</th><th>Not</th>
-              </tr>
+              <tr><th>Konşimento</th><th>ETA (Varış)</th><th>ETD (Kalkış)</th><th>Kaynak</th><th>Not</th></tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>
+              {% for r in results %}
+              <tr>
+                <td class="td-bl">{{ r.bl }}</td>
+                <td class="{% if not r.eta or r.eta == 'Bilinmiyor' %}td-unknown{% endif %}">{{ r.eta or 'Bilinmiyor' }}</td>
+                <td class="{% if not r.etd or r.etd == 'Bilinmiyor' %}td-unknown{% endif %}">{{ r.etd or 'Bilinmiyor' }}</td>
+                <td>{{ r.kaynak or '-' }}</td>
+                <td class="td-log">{{ r.log or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
           </table>
-        </div>`;
-    }
+        </div>
+        {% else %}
+        <div class="no-results">Sonuç yok. "Sorgula" butonuna basın.</div>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+</div>
 
-    function esc(s) {
-      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
+<div id="toast"></div>
 
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.style.display = 'block';
-      setTimeout(() => { t.style.display = 'none'; }, 3500);
-    }
-  </script>
+<script>
+  let pollInterval = null;
+
+  document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('blInput');
+    const bl = input.value.trim().toUpperCase();
+    if (!bl) return;
+    const form = new FormData(); form.append('bl', bl);
+    try {
+      const res = await fetch('/api/bl', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); return; }
+      const list = document.getElementById('blList');
+      const hint = document.getElementById('emptyHint');
+      if (hint) hint.remove();
+      const li = document.createElement('li');
+      li.id = `bl-${data.id}`;
+      li.innerHTML = `<span>${data.bl}</span><button class="bl-del" onclick="deleteBL(${data.id})" title="Kaldır">&#10005;</button>`;
+      list.appendChild(li);
+      input.value = '';
+    } catch { showToast('Bağlantı hatası'); }
+  });
+
+  async function deleteBL(id) {
+    try {
+      const res = await fetch(`/api/bl/${id}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('Silinemedi'); return; }
+      const li = document.getElementById(`bl-${id}`);
+      if (li) li.remove();
+      const list = document.getElementById('blList');
+      if (!list.querySelector('li:not(.empty-hint)')) {
+        const hint = document.createElement('li');
+        hint.className = 'empty-hint'; hint.id = 'emptyHint';
+        hint.textContent = 'Henüz eklenmedi.';
+        list.appendChild(hint);
+      }
+    } catch { showToast('Bağlantı hatası'); }
+  }
+
+  async function runJob() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true; btn.textContent = 'Başlatılıyor...';
+    try {
+      const res = await fetch('/api/run', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.detail || 'Hata'); btn.disabled = false; btn.textContent = 'Sorgula'; return; }
+      setStatus('running', 'Sorgu devam ediyor...');
+      startPolling(data.job_id);
+    } catch { showToast('Bağlantı hatası'); btn.disabled = false; btn.textContent = 'Sorgula'; }
+  }
+
+  function startPolling(jobId) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/job/${jobId}`);
+        const data = await res.json();
+        if (data.status === 'completed') {
+          clearInterval(pollInterval);
+          setStatus('completed', 'Sorgu tamamlandı.');
+          renderResults(data.results);
+          enableRunBtn();
+        } else if (data.status === 'failed') {
+          clearInterval(pollInterval);
+          setStatus('failed', 'Sorgu başarısız oldu.');
+          enableRunBtn();
+        }
+      } catch {}
+    }, 3000);
+  }
+
+  {% if job and job.status == 'running' %}
+  startPolling({{ job.id }});
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runBtn').textContent = 'Çalışıyor...';
+  {% endif %}
+
+  async function changePassword() {
+    const old = document.getElementById('pwOld').value;
+    const nw = document.getElementById('pwNew').value;
+    const msg = document.getElementById('pwMsg');
+    if (!old || !nw) { msg.className = 'pw-msg err'; msg.textContent = 'Tüm alanları doldurun.'; return; }
+    const form = new FormData(); form.append('old_password', old); form.append('new_password', nw);
+    try {
+      const res = await fetch('/api/change-password', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) { msg.className = 'pw-msg err'; msg.textContent = data.detail || 'Hata'; return; }
+      msg.className = 'pw-msg ok'; msg.textContent = 'Şifre güncellendi.';
+      document.getElementById('pwOld').value = '';
+      document.getElementById('pwNew').value = '';
+    } catch { msg.className = 'pw-msg err'; msg.textContent = 'Bağlantı hatası'; }
+  }
+
+  function setStatus(type, msg) {
+    const bar = document.getElementById('statusBar');
+    bar.className = `status-bar ${type}`;
+    bar.innerHTML = type === 'running' ? `<div class="spinner"></div><span>${msg}</span>` : `<span>${msg}</span>`;
+  }
+  function enableRunBtn() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = false; btn.textContent = 'Tekrar Sorgula';
+  }
+  function renderResults(results) {
+    const area = document.getElementById('resultsArea');
+    if (!results || results.length === 0) { area.innerHTML = '<div class="no-results">Sonuç bulunamadı.</div>'; return; }
+    const rows = results.map(r => `
+      <tr>
+        <td class="td-bl">${esc(r.bl)}</td>
+        <td class="${r.eta === 'Bilinmiyor' ? 'td-unknown' : ''}">${esc(r.eta)}</td>
+        <td class="${r.etd === 'Bilinmiyor' ? 'td-unknown' : ''}">${esc(r.etd)}</td>
+        <td>${esc(r.kaynak)}</td>
+        <td class="td-log">${esc(r.log)}</td>
+      </tr>`).join('');
+    area.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Konşimento</th><th>ETA (Varış)</th><th>ETD (Kalkış)</th><th>Kaynak</th><th>Not</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3500);
+  }
+</script>
 </body>
 </html>
