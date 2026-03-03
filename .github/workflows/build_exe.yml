@@ -30,41 +30,33 @@ jobs:
       - name: EXE üret (PyInstaller)
         shell: python
         run: |
-          import subprocess, sys, os, playwright
+          import subprocess, sys, playwright
           from pathlib import Path
 
-          # Playwright driver binary'sini bul (platform-safe path)
-          driver = Path(playwright.__file__).parent / "driver" / "playwright.exe"
-          print(f"Playwright driver: {driver}")
-          print(f"Driver exists: {driver.exists()}")
+          # Playwright paket konumunu göster
+          pkg = Path(playwright.__file__).parent
+          driver = pkg / "driver" / "playwright.exe"
+          print(f"Playwright package: {pkg}")
+          print(f"Playwright driver: {driver} (exists: {driver.exists()})")
 
           cmd = [
               sys.executable, "-m", "PyInstaller",
               "--onefile",
               "--windowed",
               "--name", "MSCTakip",
+              # Playwright'ın tüm modülleri + driver binary dahil
+              "--collect-all", "playwright",
+              # requests + certifi gibi veri dosyaları dahil
+              "--collect-all", "requests",
+              "--collect-all", "certifi",
               "--hidden-import", "tkinter",
               "--hidden-import", "tkinter.ttk",
               "--hidden-import", "tkinter.scrolledtext",
-              "--hidden-import", "playwright",
-              "--hidden-import", "playwright.async_api",
-              "--hidden-import", "playwright.sync_api",
-              "--hidden-import", "playwright._impl._api_types",
-              "--hidden-import", "playwright._impl._browser",
-              "--hidden-import", "playwright._impl._browser_context",
-              "--hidden-import", "playwright._impl._page",
-              "--hidden-import", "playwright._impl._driver",
               "--hidden-import", "sqlite3",
               "--hidden-import", "asyncio",
-              "--hidden-import", "requests",
               "--hidden-import", "importlib.util",
+              "bootstrap/loader.py",
           ]
-
-          # Playwright driver varsa ekle
-          if driver.exists():
-              cmd += ["--add-binary", f"{driver}:playwright/driver"]
-
-          cmd.append("bootstrap/loader.py")
 
           result = subprocess.run(cmd, check=True)
 
