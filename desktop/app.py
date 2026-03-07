@@ -111,9 +111,9 @@ def db_get_results():
 
 def _btn(parent, text, cmd, bg, fg=None, **kw):
     fg = fg or C["white"]
+    kw.setdefault("font", FONT_BOLD)
     b = tk.Button(parent, text=text, command=cmd,
-                  bg=bg, fg=fg, font=FONT_BOLD,
-                  relief="flat", cursor="hand2",
+                  bg=bg, fg=fg, relief="flat", cursor="hand2",
                   padx=14, pady=6, **kw)
     b.bind("<Enter>", lambda e: b.config(bg=C["accent_h"] if bg == C["accent"] else bg))
     b.bind("<Leave>", lambda e: b.config(bg=bg))
