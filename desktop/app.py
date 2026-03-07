@@ -73,6 +73,11 @@ def init_db():
                 error      TEXT,
                 queried_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
+        # Eski DB şema migrasyonu — eksik kolonları ekle
+        existing = {row[1] for row in c.execute("PRAGMA table_info(results)")}
+        for col, defn in [("etd", "TEXT"), ("source", "TEXT"), ("error", "TEXT")]:
+            if col not in existing:
+                c.execute(f"ALTER TABLE results ADD COLUMN {col} {defn}")
 
 def db_get_bls():
     with _conn() as c:
