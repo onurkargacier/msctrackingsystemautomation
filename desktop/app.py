@@ -1,69 +1,57 @@
 """
-MSC Konşimento Takip — Masaüstü Uygulaması
-İlk açılışta Playwright browser otomatik indirilir.
-Veriler: %APPDATA%\MSCTakip\data.db
+MSC Konşimento Takip Sistemi — Masaüstü Uygulaması
 """
 import sys
 import os
-import asyncio
-import threading
 import sqlite3
-import subprocess
-import random
+import threading
 import traceback
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
-# ── Scraper yolu ──────────────────────────────────────────────────────────────
-# PyInstaller (.exe) veya direct python çalıştırması destekle
+# ── Yol ayarı ─────────────────────────────────────────────────────────────────
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys._MEIPASS)
 else:
     BASE_DIR = Path(__file__).resolve().parent.parent
 
-# sys.path'e src kütüphanesi ekle (loader.py veya direct çalıştırma uyumluluğu)
 src_path = str(BASE_DIR / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 # ── Veri klasörü ──────────────────────────────────────────────────────────────
-if sys.platform == "win32":
-    APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "MSCTakip"
-else:
-    APP_DIR = Path.home() / ".msctakip"
-
+APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "MSCTakip"
 APP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = APP_DIR / "data.db"
 
-# ── Modern Profesyonel Tema ──────────────────────────────────────────────────
-# Soft, gözü rahatlatıcı renkler + modern kartlar
+# ── Renk paleti ───────────────────────────────────────────────────────────────
+C = {
+    "bg":          "#F8FAFC",   # sayfa arka planı
+    "sidebar":     "#0F172A",   # koyu navy kenar çubuğu
+    "sidebar_h":   "#1E293B",   # sidebar hover
+    "header":      "#1E40AF",   # üst başlık
+    "card":        "#FFFFFF",   # kart arka planı
+    "card_border": "#E2E8F0",   # kart çerçevesi
+    "accent":      "#3B82F6",   # mavi vurgu
+    "accent_h":    "#2563EB",   # mavi hover
+    "success":     "#10B981",   # yeşil
+    "danger":      "#EF4444",   # kırmızı
+    "warning":     "#F59E0B",   # turuncu
+    "text":        "#1E293B",   # koyu metin
+    "muted":       "#64748B",   # gri metin
+    "white":       "#FFFFFF",
+    "row_alt":     "#F1F5F9",   # tablo satır alternatif
+}
 
-# Temel renkler
-PRIMARY       = "#0f172a"      # Koyu navy (header)
-PRIMARY_LIGHT = "#1e40af"      # Soft navy (buttons)
-ACCENT        = "#0ea5e9"      # Parlak mavi (hover, accent)
-SUCCESS       = "#059669"      # Yeşil (başarı)
-ERROR         = "#dc2626"      # Kırmızı (hata)
-WARNING       = "#f59e0b"      # Turuncu (uyarı)
-
-# Nötr renkler
-BG_SOFT       = "#f0f9ff"      # Çok soft mavi arka plan
-CARD          = "#ffffff"      # Beyaz kartlar
-TEXT_DARK     = "#1e293b"      # Koyu metin
-TEXT_MUTED    = "#64748b"      # Gri metin
-BORDER        = "#cbd5e1"      # Soft border
-
-# Uyumlu alias'lar (eski kod için)
-NAVY   = PRIMARY_LIGHT
-BG     = BG_SOFT
-WHITE  = CARD
-GREEN  = SUCCESS
-RED    = ERROR
-GRAY   = TEXT_MUTED
+FONT_UI    = ("Segoe UI", 10)
+FONT_BOLD  = ("Segoe UI", 10, "bold")
+FONT_TITLE = ("Segoe UI", 13, "bold")
+FONT_SMALL = ("Segoe UI", 9)
+FONT_MONO  = ("Consolas", 10)
 
 
-# ─── Veritabanı ───────────────────────────────────────────────────────────────
+# ── Veritabanı ────────────────────────────────────────────────────────────────
 
 def _conn():
     return sqlite3.connect(str(DB_PATH))
@@ -72,14 +60,18 @@ def init_db():
     with _conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS bl_numbers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bl TEXT NOT NULL UNIQUE
+                id  INTEGER PRIMARY KEY AUTOINCREMENT,
+                bl  TEXT NOT NULL UNIQUE
             )""")
         c.execute("""
             CREATE TABLE IF NOT EXISTS results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bl TEXT, eta TEXT, etd TEXT, kaynak TEXT, log TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                bl         TEXT,
+                eta        TEXT,
+                etd        TEXT,
+                source     TEXT,
+                error      TEXT,
+                queried_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
 
 def db_get_bls():
@@ -98,481 +90,257 @@ def db_delete_bl(bl_id):
     with _conn() as c:
         c.execute("DELETE FROM bl_numbers WHERE id=?", (bl_id,))
 
-def db_save_results(results):
+def db_save_results(results: list):
     with _conn() as c:
         c.execute("DELETE FROM results")
         for r in results:
             c.execute(
-                "INSERT INTO results (bl,eta,etd,kaynak,log) VALUES (?,?,?,?,?)",
-                (
-                    r.get("konşimento", ""),
-                    r.get("ETA (Date)") or "Bilinmiyor",
-                    r.get("ETD") or "Bilinmiyor",
-                    r.get("Kaynak") or "-",
-                    " | ".join(r.get("log") or []),
-                ),
+                "INSERT INTO results (bl,eta,etd,source,error) VALUES (?,?,?,?,?)",
+                (r["bl"], r.get("eta") or "-", r.get("etd") or "-",
+                 r.get("source") or "-", r.get("error") or ""),
             )
 
 def db_get_results():
     with _conn() as c:
         return c.execute(
-            "SELECT bl, eta, etd, kaynak, log FROM results ORDER BY bl"
+            "SELECT bl, eta, etd, source, error FROM results ORDER BY bl"
         ).fetchall()
 
 
-# ─── İlk kurulum: Playwright browser ─────────────────────────────────────────
+# ── Küçük bileşenler ──────────────────────────────────────────────────────────
 
-def _playwright_installed() -> bool:
-    """Playwright chromium binary'si indirilmiş mi? Dosya varlığından kontrol et."""
-    # Windows: %LOCALAPPDATA%\ms-playwright\chromium-*/chrome-win/chrome.exe
-    # Linux/Mac: ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
-        pattern, exe_name = "chromium*", "chrome-win/chrome.exe"
-    else:
-        base = Path.home() / ".cache" / "ms-playwright"
-        pattern, exe_name = "chromium*", "chrome-linux/chrome"
-
-    if not base.exists():
-        return False
-    for d in base.iterdir():
-        if d.is_dir() and d.name.startswith("chromium"):
-            if (d / exe_name).exists():
-                return True
-    return False
-
-def _install_browser(log_callback):
-    """playwright install chromium komutunu çalıştır."""
-    log_callback("Playwright Chromium indiriliyor, lütfen bekleyin...\n")
-
-    # EXE durumunda sys.executable Python değil, playwright driver'ını kullan
-    if getattr(sys, "frozen", False):
-        # PyInstaller: playwright driver _MEIPASS/playwright/driver/ altında
-        driver = Path(sys._MEIPASS) / "playwright" / "driver" / "playwright.exe"
-        if driver.exists():
-            cmd = [str(driver), "install", "chromium"]
-        else:
-            log_callback(f"HATA: Playwright driver bulunamadı.\nBeklenen: {driver}\n")
-            return False
-    else:
-        cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode == 0:
-        log_callback("Kurulum tamamlandı!\n")
-        return True
-    else:
-        log_callback(f"HATA:\n{result.stderr}\n")
-        return False
+def _btn(parent, text, cmd, bg, fg=None, **kw):
+    fg = fg or C["white"]
+    b = tk.Button(parent, text=text, command=cmd,
+                  bg=bg, fg=fg, font=FONT_BOLD,
+                  relief="flat", cursor="hand2",
+                  padx=14, pady=6, **kw)
+    b.bind("<Enter>", lambda e: b.config(bg=C["accent_h"] if bg == C["accent"] else bg))
+    b.bind("<Leave>", lambda e: b.config(bg=bg))
+    return b
 
 
-class SetupWindow(tk.Toplevel):
-    """İlk açılışta browser kurulumu için pencere."""
-    def __init__(self, parent, on_done):
-        super().__init__(parent)
-        self.title("⚙️  İlk Kurulum")
-        self.geometry("580x320")
-        self.resizable(False, False)
-        self.configure(bg=BG_SOFT)
-        self.grab_set()
-        self._on_done = on_done
-        self._success = False
-
-        # Header
-        hdr = tk.Frame(self, bg=ACCENT, height=50)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        tk.Label(hdr, text="MSC Takip — İlk Kurulum",
-                 bg=ACCENT, fg=CARD, font=("Segoe UI", 13, "bold")).pack(
-                     anchor="w", padx=16, pady=12)
-
-        # Content
-        content = tk.Frame(self, bg=CARD)
-        content.pack(fill="both", expand=True, padx=14, pady=14)
-
-        tk.Label(content, text="🌐 Playwright Chromium tarayıcısı indiriliyor...",
-                 bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 10, "bold")).pack(
-                     anchor="w", pady=(0, 2))
-        tk.Label(content, text="(Bu işlem ilk açılışta bir kez yapılır, ~150 MB)",
-                 bg=CARD, fg=TEXT_MUTED, font=("Segoe UI", 9)).pack(
-                     anchor="w", pady=(0, 12))
-
-        self._text = tk.Text(content, height=7, font=("Courier New", 8),
-                              bg=BG_SOFT, fg=TEXT_DARK, relief="flat", state="disabled",
-                              padx=6, pady=6)
-        self._text.pack(fill="x", pady=(0, 12))
-
-        self._bar = ttk.Progressbar(content, mode="indeterminate")
-        self._bar.pack(fill="x", pady=(0, 12))
-        self._bar.start(12)
-
-        threading.Thread(target=self._run, daemon=True).start()
-
-    def _log(self, msg):
-        self._text.configure(state="normal")
-        self._text.insert("end", msg)
-        self._text.see("end")
-        self._text.configure(state="disabled")
-
-    def _run(self):
-        ok = _install_browser(lambda m: self.after(0, self._log, m))
-        self._success = ok
-        self.after(0, self._finish)
-
-    def _finish(self):
-        self._bar.stop()
-        if self._success:
-            self.after(800, self._close)
-        else:
-            messagebox.showerror(
-                "Kurulum Hatası",
-                "Playwright browser indirilemedi.\n"
-                "İnternet bağlantınızı kontrol edip uygulamayı yeniden başlatın.",
-                parent=self
-            )
-            self.destroy()
-
-    def _close(self):
-        self.destroy()
-        self._on_done(self._success)
-
-
-class ErrorWindow(tk.Toplevel):
-    """Detaylı hata mesajı penceresi."""
-    def __init__(self, parent, error_msg):
-        super().__init__(parent)
-        self.title("⚠️  Sorgu Hatası")
-        self.geometry("650x400")
-        self.resizable(True, True)
-        self.configure(bg=BG_SOFT)
-        self.grab_set()
-
-        # Header
-        hdr = tk.Frame(self, bg=ERROR, height=50)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        tk.Label(hdr, text="Sorgu Hatası Oluştu",
-                 bg=ERROR, fg=CARD, font=("Segoe UI", 12, "bold")).pack(
-                     anchor="w", padx=16, pady=12)
-
-        # Content
-        content = tk.Frame(self, bg=CARD)
-        content.pack(fill="both", expand=True, padx=16, pady=16)
-
-        info = tk.Label(content,
-                        text="❌ Sorgu sırasında bir hata oluştu.\n\n"
-                             "Lütfen kontrol edin:\n"
-                             "  • İnternet bağlantısı\n"
-                             "  • MSC sitesi erişilebiliyor mu?\n"
-                             "  • Playwright kuruldu mu?",
-                        bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 10), justify="left")
-        info.pack(anchor="w", pady=(0, 12), fill="x")
-
-        # Hata detayları
-        tk.Label(content, text="Hata Detayları:",
-                 bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 9, "bold")).pack(
-                     anchor="w", pady=(8, 4))
-
-        txt_frame = tk.Frame(content, bg=CARD, relief="solid", bd=1)
-        txt_frame.pack(fill="both", expand=True, pady=(0, 12))
-
-        sb = ttk.Scrollbar(txt_frame)
-        sb.pack(side="right", fill="y")
-        txt = scrolledtext.ScrolledText(
-            txt_frame, height=8, font=("Courier New", 8),
-            relief="flat", bd=0, bg=BG_SOFT, fg=TEXT_DARK,
-            yscrollcommand=sb.set, padx=8, pady=6)
-        txt.pack(fill="both", expand=True)
-        txt.insert("1.0", str(error_msg))
-        txt.configure(state="disabled")
-        sb.config(command=txt.yview)
-
-        # Buton
-        btn = tk.Button(content, text="Tamam", bg=PRIMARY_LIGHT, fg=CARD,
-                        font=("Segoe UI", 10, "bold"), relief="flat",
-                        padx=20, pady=8, cursor="hand2", command=self.destroy)
-        btn.pack()
-        btn.bind("<Enter>", lambda e: btn.config(bg=ACCENT))
-        btn.bind("<Leave>", lambda e: btn.config(bg=PRIMARY_LIGHT))
-
-
-class BatchAddWindow(tk.Toplevel):
-    """Toplu konşimento ekleme penceresi."""
+class BatchWindow(tk.Toplevel):
     def __init__(self, parent, on_submit):
         super().__init__(parent)
-        self.title("📦 Toplu Konşimento Ekle")
-        self.geometry("580x420")
+        self.title("Toplu Konşimento Ekle")
+        self.geometry("520x380")
         self.resizable(False, False)
-        self.configure(bg=BG_SOFT)
+        self.configure(bg=C["bg"])
         self.grab_set()
         self._on_submit = on_submit
+        self._build()
 
+    def _build(self):
         # Header
-        hdr = tk.Frame(self, bg=PRIMARY_LIGHT, height=50)
+        hdr = tk.Frame(self, bg=C["header"], height=48)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="Toplu Konşimento Ekleme",
-                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 13, "bold")).pack(
-                     anchor="w", padx=16, pady=12)
+        tk.Label(hdr, text="Toplu Konşimento Ekle",
+                 bg=C["header"], fg=C["white"], font=FONT_TITLE).pack(
+                     side="left", padx=16, pady=10)
 
-        # Content
-        content = tk.Frame(self, bg=CARD)
-        content.pack(fill="both", expand=True, padx=14, pady=14)
+        # Body
+        body = tk.Frame(self, bg=C["bg"])
+        body.pack(fill="both", expand=True, padx=16, pady=12)
 
-        info = tk.Label(content,
-                        text="Her satıra bir konşimento numarası yazın:\n"
-                             "MEDU1234567, MSCU9876543, HAPAG123456\n"
-                             "⌛ Örnek: 10-15 BL'yi seçin (bulk işlemler daha hızlı)",
-                        bg=CARD, fg=TEXT_DARK, font=("Segoe UI", 9), justify="left")
-        info.pack(anchor="w", pady=(0, 12), fill="x")
+        tk.Label(body, text="Her satıra bir konşimento numarası:",
+                 bg=C["bg"], fg=C["muted"], font=FONT_SMALL).pack(anchor="w")
 
-        # Text input
-        txt_frame = tk.Frame(content, bg=CARD, relief="solid", bd=1)
-        txt_frame.pack(fill="both", expand=True, pady=(0, 12))
+        self._txt = scrolledtext.ScrolledText(
+            body, height=12, font=FONT_MONO,
+            bg=C["card"], fg=C["text"], relief="solid", bd=1,
+            insertbackground=C["accent"])
+        self._txt.pack(fill="both", expand=True, pady=8)
 
-        sb = ttk.Scrollbar(txt_frame)
-        sb.pack(side="right", fill="y")
-        self._text = scrolledtext.ScrolledText(
-            txt_frame, height=10, font=("Courier New", 10),
-            relief="flat", bd=0, bg=BG_SOFT, fg=TEXT_DARK,
-            yscrollcommand=sb.set, padx=8, pady=6, insertbackground=PRIMARY_LIGHT)
-        self._text.pack(fill="both", expand=True)
-        sb.config(command=self._text.yview)
-
-        # Buttons
-        btn_frame = tk.Frame(content, bg=CARD)
-        btn_frame.pack(fill="x")
-
-        btn_ekle = tk.Button(btn_frame, text="✅ Ekle", bg=SUCCESS, fg=CARD,
-                             font=("Segoe UI", 10, "bold"), relief="flat",
-                             padx=20, pady=8, cursor="hand2", command=self._submit)
-        btn_ekle.pack(side="right", padx=(6, 0))
-        btn_ekle.bind("<Enter>", lambda e: btn_ekle.config(bg=ACCENT))
-        btn_ekle.bind("<Leave>", lambda e: btn_ekle.config(bg=SUCCESS))
-
-        btn_iptal = tk.Button(btn_frame, text="✕ İptal", bg=BG_SOFT, fg=TEXT_DARK,
-                              font=("Segoe UI", 10), relief="flat",
-                              padx=20, pady=8, cursor="hand2", command=self.destroy)
-        btn_iptal.pack(side="right")
-        btn_iptal.bind("<Enter>", lambda e: btn_iptal.config(bg=BORDER))
-        btn_iptal.bind("<Leave>", lambda e: btn_iptal.config(bg=BG_SOFT))
+        bf = tk.Frame(body, bg=C["bg"])
+        bf.pack(fill="x")
+        _btn(bf, "Ekle", self._submit, C["accent"]).pack(side="right")
+        _btn(bf, "İptal", self.destroy, C["muted"]).pack(side="right", padx=(0, 6))
 
     def _submit(self):
-        text = self._text.get("1.0", "end").strip()
-        if not text:
-            messagebox.showwarning("Uyarı", "Lütfen en az bir konşimento girin.", parent=self)
+        raw = self._txt.get("1.0", "end").strip()
+        if not raw:
             return
-        lines = [line.strip().upper() for line in text.split("\n") if line.strip()]
+        lines = [ln.strip().upper() for ln in re.split(r"[\n,;]+", raw) if ln.strip()]
         self._on_submit(lines)
         self.destroy()
 
+import re
 
-# ─── Ana Uygulama ─────────────────────────────────────────────────────────────
+
+# ── Ana Uygulama ──────────────────────────────────────────────────────────────
 
 class MSCApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("MSC Konşimento Takip — Profesyonel Lojistik Yönetimi")
-        self.geometry("1140x660")
-        self.minsize(860, 500)
-        self.configure(bg=BG_SOFT)
+        self.title("MSC Konşimento Takip Sistemi")
+        self.geometry("1200x680")
+        self.minsize(900, 520)
+        self.configure(bg=C["bg"])
 
-        # Windows görev çubuğu ikonu
         try:
             self.iconbitmap(default="")
         except Exception:
             pass
 
         init_db()
-        self._scraping = False
         self._bl_ids: list[int] = []
+        self._running = False
 
         self._build_ui()
         self._load_bls()
         self._load_results()
 
-        # İlk açılışta browser kontrolü (arka planda)
-        threading.Thread(target=self._check_browser, daemon=True).start()
-
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # ── Header: Gradient-like effect ──
-        hdr = tk.Frame(self, bg=PRIMARY, height=56)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
+        # ── Top header bar ─────────────────────────────────────────────────────
+        header = tk.Frame(self, bg=C["header"], height=54)
+        header.pack(fill="x")
+        header.pack_propagate(False)
 
-        # Title
-        title_lbl = tk.Label(hdr, text="MSC Konşimento Takip Sistemi",
-                             bg=PRIMARY, fg=CARD, font=("Segoe UI", 14, "bold"))
-        title_lbl.pack(side="left", padx=20, pady=14)
+        tk.Label(header, text="MSC Konşimento Takip Sistemi",
+                 bg=C["header"], fg=C["white"], font=("Segoe UI", 14, "bold")).pack(
+                     side="left", padx=20, pady=12)
+        tk.Label(header, text="curl_cffi · Chrome fingerprint bypass",
+                 bg=C["header"], fg="#93C5FD", font=FONT_SMALL).pack(
+                     side="left", padx=4, pady=12)
 
-        # Subtitle
-        sub_lbl = tk.Label(hdr, text="Profesyonel Lojistik Yönetimi",
-                          bg=PRIMARY, fg=ACCENT, font=("Segoe UI", 9, "italic"))
-        sub_lbl.pack(side="left", padx=0, pady=14)
+        # ── İçerik alanı ───────────────────────────────────────────────────────
+        content = tk.Frame(self, bg=C["bg"])
+        content.pack(fill="both", expand=True, padx=16, pady=14)
 
-        # Content area: Soft background
-        main = tk.Frame(self, bg=BG_SOFT)
-        main.pack(fill="both", expand=True, padx=16, pady=16)
+        self._build_sidebar(content)
+        self._build_main(content)
 
-        # ── Sol Panel (Kart) ────────────────────────────────────────────────────
-        # Shadow frame (sol panel için)
-        left_shadow = tk.Frame(main, bg=BG_SOFT, width=290, height=400)
-        left_shadow.pack(side="left", fill="y", padx=(0, 14))
-        left_shadow.pack_propagate(False)
+    def _build_sidebar(self, parent):
+        # Sidebar kart
+        side = tk.Frame(parent, bg=C["card"], width=260,
+                        relief="flat", highlightbackground=C["card_border"],
+                        highlightthickness=1)
+        side.pack(side="left", fill="y", padx=(0, 14))
+        side.pack_propagate(False)
 
-        # Ana card
-        left = tk.Frame(left_shadow, bg=CARD, width=290,
-                        relief="solid", bd=1)
-        left.place(in_=left_shadow, x=0, y=0, width=290, relheight=1.0)
+        # Başlık
+        sh = tk.Frame(side, bg=C["sidebar"], height=42)
+        sh.pack(fill="x")
+        sh.pack_propagate(False)
+        tk.Label(sh, text="KONŞİMENTO LİSTESİ",
+                 bg=C["sidebar"], fg=C["white"], font=FONT_BOLD).pack(
+                     side="left", padx=14, pady=10)
 
-        # Header
-        header_frame = tk.Frame(left, bg=PRIMARY_LIGHT, height=48)
-        header_frame.pack(fill="x")
-        header_frame.pack_propagate(False)
-        tk.Label(header_frame, text="📋 KONŞİMENTO LİSTESİ",
-                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 10, "bold")).pack(
-                     anchor="w", padx=12, pady=10)
+        inner = tk.Frame(side, bg=C["card"])
+        inner.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Divider
-        ttk.Separator(left, orient="horizontal").pack(fill="x", padx=0, pady=0)
+        # Tek ekleme
+        ef = tk.Frame(inner, bg=C["card"])
+        ef.pack(fill="x", pady=(0, 6))
 
-        # Content padding
-        content = tk.Frame(left, bg=CARD)
-        content.pack(fill="both", expand=True, padx=12, pady=12)
-
-        # Ekle formu
-        af = tk.Frame(content, bg=CARD)
-        af.pack(fill="x", pady=(0, 8))
-        self._entry = tk.Entry(af, font=("Courier New", 11),
-                               relief="solid", bd=1, bg=BG_SOFT, fg=TEXT_DARK,
-                               insertbackground=PRIMARY_LIGHT)
-        self._entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=6)
+        self._entry = tk.Entry(ef, font=FONT_MONO, bg=C["bg"], fg=C["text"],
+                               relief="solid", bd=1, insertbackground=C["accent"])
+        self._entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 6))
         self._entry.bind("<Return>", lambda _: self._add_bl())
 
-        # Ekle butonu (modern)
-        btn_ekle = tk.Button(af, text="➕ Ekle", bg=PRIMARY_LIGHT, fg=CARD,
-                             font=("Segoe UI", 9, "bold"), relief="flat",
-                             padx=12, pady=2, cursor="hand2", command=self._add_bl)
-        btn_ekle.pack(side="right")
-        btn_ekle.bind("<Enter>", lambda e: btn_ekle.config(bg=ACCENT))
-        btn_ekle.bind("<Leave>", lambda e: btn_ekle.config(bg=PRIMARY_LIGHT))
+        _btn(ef, "+", self._add_bl, C["accent"]).pack(side="right")
 
-        # Toplu ekle butonu
-        btn_batch = tk.Button(content, text="📦 Toplu Ekle", bg=BG_SOFT, fg=PRIMARY_LIGHT,
-                              font=("Segoe UI", 9), relief="flat", padx=8, pady=6,
-                              cursor="hand2", command=self._batch_add)
-        btn_batch.pack(fill="x", pady=(0, 8))
-        btn_batch.bind("<Enter>", lambda e: btn_batch.config(bg=ACCENT, fg=CARD))
-        btn_batch.bind("<Leave>", lambda e: btn_batch.config(bg=BG_SOFT, fg=PRIMARY_LIGHT))
+        # Toplu ekle
+        _btn(inner, "Toplu Ekle", self._batch_add,
+             C["bg"], fg=C["accent"]).pack(fill="x", pady=(0, 8))
 
-        # Liste container
-        lf = tk.Frame(content, bg=CARD)
-        lf.pack(fill="both", expand=True, pady=(0, 8))
+        # Liste
+        lf = tk.Frame(inner, bg=C["card"])
+        lf.pack(fill="both", expand=True)
 
-        self._lb = tk.Listbox(lf, font=("Courier New", 10),
-                              selectmode="single", relief="flat",
-                              bg=BG_SOFT, fg=TEXT_DARK, bd=0,
-                              selectbackground=ACCENT,
-                              selectforeground=CARD,
-                              activestyle="none", highlightthickness=0)
-        self._lb.pack(side="left", fill="both", expand=True)
-        sb = ttk.Scrollbar(lf, orient="vertical", command=self._lb.yview)
+        sb = ttk.Scrollbar(lf, orient="vertical")
         sb.pack(side="right", fill="y")
-        self._lb.configure(yscrollcommand=sb.set)
 
-        # Sil butonu
-        btn_sil = tk.Button(content, text="🗑️  Seçileni Kaldır", bg=ERROR, fg=CARD,
-                           font=("Segoe UI", 9), relief="flat", padx=8, pady=6,
-                           cursor="hand2", command=self._delete_bl)
-        btn_sil.pack(fill="x")
-        btn_sil.bind("<Enter>", lambda e: btn_sil.config(bg=WARNING))
-        btn_sil.bind("<Leave>", lambda e: btn_sil.config(bg=ERROR))
+        self._lb = tk.Listbox(lf, font=FONT_MONO, selectmode="single",
+                              bg=C["bg"], fg=C["text"], bd=0, relief="flat",
+                              selectbackground=C["accent"], selectforeground=C["white"],
+                              activestyle="none", highlightthickness=0,
+                              yscrollcommand=sb.set)
+        self._lb.pack(side="left", fill="both", expand=True)
+        sb.config(command=self._lb.yview)
 
-        # ── Sağ Panel ──────────────────────────────────────────────────────────
-        right = tk.Frame(main, bg=BG_SOFT)
+        # Sil
+        _btn(inner, "Seçileni Kaldır", self._delete_bl,
+             C["danger"]).pack(fill="x", pady=(8, 0))
+
+    def _build_main(self, parent):
+        right = tk.Frame(parent, bg=C["bg"])
         right.pack(side="left", fill="both", expand=True)
 
-        # ── Sorgula Kartı ──
-        top = tk.Frame(right, bg=CARD, relief="solid", bd=1)
-        top.pack(fill="x", pady=(0, 14))
+        # ── Sorgu kontrol kartı ────────────────────────────────────────────────
+        ctrl = tk.Frame(right, bg=C["card"],
+                        highlightbackground=C["card_border"], highlightthickness=1)
+        ctrl.pack(fill="x", pady=(0, 12))
 
-        top_content = tk.Frame(top, bg=CARD)
-        top_content.pack(fill="both", padx=14, pady=12)
+        ci = tk.Frame(ctrl, bg=C["card"])
+        ci.pack(fill="x", padx=14, pady=10)
 
-        # Sorgula butonu (highlight)
-        self._run_btn = tk.Button(top_content, text="🔍 SORGULA",
-                                  bg=SUCCESS, fg=CARD,
-                                  font=("Segoe UI", 12, "bold"),
-                                  relief="flat", padx=24, pady=10,
-                                  cursor="hand2", command=self._run)
-        self._run_btn.pack(side="left", padx=(0, 12))
-        self._run_btn.bind("<Enter>", lambda e: self._run_btn.config(bg=ACCENT))
-        self._run_btn.bind("<Leave>", lambda e: self._run_btn.config(
-            bg=SUCCESS if not self._scraping else SUCCESS))
+        self._run_btn = _btn(ci, "  Sorgula  ", self._run, C["success"],
+                             font=("Segoe UI", 11, "bold"))
+        self._run_btn.pack(side="left")
 
-        # Status
-        status_frame = tk.Frame(top_content, bg=CARD)
-        status_frame.pack(side="left", fill="both", expand=True)
+        sf = tk.Frame(ci, bg=C["card"])
+        sf.pack(side="left", fill="x", expand=True, padx=14)
 
-        self._status_var = tk.StringVar(value="Henüz sorgu yapılmadı.")
-        self._status_lbl = tk.Label(status_frame, textvariable=self._status_var,
-                                     bg=CARD, fg=TEXT_MUTED, font=("Segoe UI", 10))
-        self._status_lbl.pack(anchor="w")
+        self._status_var = tk.StringVar(value="Sorgu bekleniyor.")
+        tk.Label(sf, textvariable=self._status_var,
+                 bg=C["card"], fg=C["muted"], font=FONT_UI).pack(anchor="w")
 
-        self._progress = ttk.Progressbar(status_frame, mode="indeterminate", length=120)
+        self._progress = ttk.Progressbar(sf, mode="indeterminate", length=200)
 
-        # ── Sonuçlar Kartı ──
-        tbl_frame = tk.Frame(right, bg=CARD, relief="solid", bd=1)
-        tbl_frame.pack(fill="both", expand=True)
+        # ── Sonuç tablosu kartı ────────────────────────────────────────────────
+        tbl_card = tk.Frame(right, bg=C["card"],
+                            highlightbackground=C["card_border"], highlightthickness=1)
+        tbl_card.pack(fill="both", expand=True)
 
-        # Header
-        tbl_header = tk.Frame(tbl_frame, bg=PRIMARY_LIGHT, height=44)
-        tbl_header.pack(fill="x")
-        tbl_header.pack_propagate(False)
-        tk.Label(tbl_header, text="📊 SONUÇLAR",
-                 bg=PRIMARY_LIGHT, fg=CARD, font=("Segoe UI", 10, "bold")).pack(
-                     anchor="w", padx=12, pady=10)
+        # Tablo başlığı
+        th = tk.Frame(tbl_card, bg=C["sidebar"], height=38)
+        th.pack(fill="x")
+        th.pack_propagate(False)
+        tk.Label(th, text="SORGU SONUÇLARI",
+                 bg=C["sidebar"], fg=C["white"], font=FONT_BOLD).pack(
+                     side="left", padx=14, pady=8)
 
-        ttk.Separator(tbl_frame, orient="horizontal").pack(fill="x")
-
-        # Treeview styling
+        # Treeview
         st = ttk.Style()
+        st.theme_use("default")
         st.configure("MSC.Treeview.Heading",
-                     font=("Segoe UI", 9, "bold"),
-                     background=BG_SOFT,
-                     foreground=TEXT_DARK)
+                     font=FONT_BOLD, background=C["row_alt"],
+                     foreground=C["text"], borderwidth=0)
         st.configure("MSC.Treeview",
-                     font=("Segoe UI", 10),
-                     rowheight=30,
-                     background=BG_SOFT,
-                     foreground=TEXT_DARK)
+                     font=FONT_UI, rowheight=28,
+                     background=C["card"], fieldbackground=C["card"],
+                     foreground=C["text"])
         st.map("MSC.Treeview",
-               background=[("selected", ACCENT)],
-               foreground=[("selected", CARD)])
+               background=[("selected", C["accent"])],
+               foreground=[("selected", C["white"])])
 
-        cols = ("Konşimento", "ETA (Varış)", "ETD (Kalkış)", "Kaynak", "Not")
-        tvf = tk.Frame(tbl_frame, bg=CARD)
-        tvf.pack(fill="both", expand=True, padx=12, pady=12)
+        cols = ("Konşimento", "ETA (Varış)", "ETD (Kalkış)", "Kaynak", "Hata")
+        tf = tk.Frame(tbl_card, bg=C["card"])
+        tf.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self._tree = ttk.Treeview(tvf, columns=cols, show="headings",
+        self._tree = ttk.Treeview(tf, columns=cols, show="headings",
                                    style="MSC.Treeview", selectmode="browse")
-        widths = [150, 130, 130, 130, 220]
+        widths = [160, 120, 120, 160, 260]
         for col, w in zip(cols, widths):
             self._tree.heading(col, text=col)
-            self._tree.column(col, width=w, minwidth=80)
+            self._tree.column(col, width=w, minwidth=60)
 
-        sby = ttk.Scrollbar(tvf, orient="vertical", command=self._tree.yview)
-        sbx = ttk.Scrollbar(tvf, orient="horizontal", command=self._tree.xview)
+        sby = ttk.Scrollbar(tf, orient="vertical",   command=self._tree.yview)
+        sbx = ttk.Scrollbar(tf, orient="horizontal", command=self._tree.xview)
         self._tree.configure(yscrollcommand=sby.set, xscrollcommand=sbx.set)
-        sby.pack(side="right", fill="y")
+        sby.pack(side="right",  fill="y")
         sbx.pack(side="bottom", fill="x")
         self._tree.pack(fill="both", expand=True)
 
-        # Sonuç etiketleri
-        self._tree.tag_configure("unknown", foreground=WARNING)  # Turuncu: bilinmiyor
-        self._tree.tag_configure("ok", foreground=SUCCESS)      # Yeşil: başarılı
+        self._tree.tag_configure("ok",      background=C["card"],    foreground=C["success"])
+        self._tree.tag_configure("unknown", background=C["card"],    foreground=C["warning"])
+        self._tree.tag_configure("error",   background="#FEF2F2", foreground=C["danger"])
+        self._tree.tag_configure("alt",     background=C["row_alt"])
 
     # ── Veri ─────────────────────────────────────────────────────────────────
 
@@ -586,15 +354,24 @@ class MSCApp(tk.Tk):
     def _load_results(self):
         for row in self._tree.get_children():
             self._tree.delete(row)
-        for bl, eta, etd, kaynak, log in db_get_results():
-            tag = "unknown" if eta == "Bilinmiyor" else "ok"
-            self._tree.insert("", "end", values=(bl, eta, etd, kaynak, log or ""), tags=(tag,))
+        for i, (bl, eta, etd, source, error) in enumerate(db_get_results()):
+            if error:
+                tag = "error"
+            elif eta == "-" or not eta:
+                tag = "unknown"
+            else:
+                tag = "ok"
+            if i % 2 == 1 and tag == "ok":
+                tag = "alt"
+            self._tree.insert("", "end",
+                               values=(bl, eta or "-", etd or "-", source or "-", error or ""),
+                               tags=(tag,))
 
     def _add_bl(self):
         bl = self._entry.get().strip().upper()
         if not bl:
             return
-        if not bl.replace("-", "").isalnum() or len(bl) < 6:
+        if not re.match(r"^[A-Z0-9\-]{4,20}$", bl):
             messagebox.showwarning("Uyarı", "Geçersiz konşimento numarası.", parent=self)
             return
         if db_add_bl(bl):
@@ -608,114 +385,86 @@ class MSCApp(tk.Tk):
         if not sel:
             messagebox.showinfo("Bilgi", "Lütfen bir konşimento seçin.", parent=self)
             return
-        bl_id = self._bl_ids[sel[0]]
-        db_delete_bl(bl_id)
+        db_delete_bl(self._bl_ids[sel[0]])
         self._load_bls()
 
     def _batch_add(self):
-        BatchAddWindow(self, on_submit=self._on_batch_submit)
+        BatchWindow(self, on_submit=self._on_batch)
 
-    def _on_batch_submit(self, bl_list):
+    def _on_batch(self, bl_list):
         added = 0
-        duplicates = []
+        dups = []
         for bl in bl_list:
-            if not bl.replace("-", "").isalnum() or len(bl) < 6:
-                duplicates.append(f"'{bl}' (geçersiz)")
+            if not re.match(r"^[A-Z0-9\-]{4,20}$", bl):
+                dups.append(f"{bl} (geçersiz)")
                 continue
             if db_add_bl(bl):
                 added += 1
             else:
-                duplicates.append(bl)
+                dups.append(bl)
         self._load_bls()
         msg = f"{added} konşimento eklendi."
-        if duplicates:
-            msg += f"\n\n{len(duplicates)} zaten listede veya geçersiz:\n" + ", ".join(duplicates[:5])
-            if len(duplicates) > 5:
-                msg += f"\n... ve {len(duplicates) - 5} tane daha"
+        if dups:
+            msg += f"\n\n{len(dups)} eklenemedi:\n" + ", ".join(dups[:8])
         messagebox.showinfo("Toplu Ekleme", msg, parent=self)
 
-    # ── Sorgula ──────────────────────────────────────────────────────────────
+    # ── Sorgu ─────────────────────────────────────────────────────────────────
 
     def _run(self):
-        if self._scraping:
+        if self._running:
             return
         bls = db_get_bls()
         if not bls:
             messagebox.showwarning("Uyarı", "Konşimento listesi boş.", parent=self)
             return
 
-        bl_list = [row[1] for row in bls]
-        self._scraping = True
-        self._run_btn.configure(state="disabled", text="Çalışıyor...")
-        self._status_var.set(f"Sorgu devam ediyor... ({len(bl_list)} konşimento)")
-        self._status_lbl.configure(fg="#1e40af")
-        self._progress.pack(side="left", padx=8)
+        self._running = True
+        self._run_btn.configure(state="disabled", text="Sorgulanıyor...")
+        self._status_var.set(f"Sorgu devam ediyor… ({len(bls)} konşimento)")
+        self._progress.pack(fill="x", pady=(4, 0))
         self._progress.start(12)
 
+        bl_list = [row[1] for row in bls]
         threading.Thread(target=self._do_run, args=(bl_list,), daemon=True).start()
 
     def _do_run(self, bl_list):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            results = loop.run_until_complete(self._scrape(bl_list))
-            db_save_results(results)
-            self.after(0, self._on_done, results, None)
-        except Exception as e:
-            error_detail = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
-            self.after(0, self._on_done, [], error_detail)
-        finally:
-            loop.close()
+        from msc_scraper import fetch_tracking
+        results = []
+        errors = []
 
-    async def _scrape(self, bl_list):
-        from msc_eta_scraper import get_eta_etd, init_browser
-        browser, pw = await init_browser()
-        sem = asyncio.Semaphore(2)
-
-        async def one(bl):
+        for i, bl in enumerate(bl_list):
+            self.after(0, self._status_var.set,
+                       f"Sorgulanıyor… ({i+1}/{len(bl_list)}) — {bl}")
             try:
-                data = await get_eta_etd(bl, browser, sem)
-                await asyncio.sleep(random.uniform(2, 5))
-                return data
+                r = fetch_tracking(bl)
+                results.append(r)
+                if r.get("error"):
+                    errors.append(bl)
             except Exception as e:
-                return {
-                    "konşimento": bl,
-                    "ETA (Date)": None, "ETD": None, "Kaynak": None,
-                    "log": [str(e)],
-                }
+                results.append({"bl": bl, "eta": None, "etd": None,
+                                 "source": None, "error": str(e)})
+                errors.append(bl)
 
-        results = await asyncio.gather(*[one(bl) for bl in bl_list])
-        await browser.close()
-        await pw.stop()
-        return results
+        db_save_results(results)
+        self.after(0, self._on_done, results, errors)
 
-    def _on_done(self, results, error):
-        self._scraping = False
+    def _on_done(self, results, errors):
+        self._running = False
         self._progress.stop()
         self._progress.pack_forget()
         self._run_btn.configure(state="normal", text="  Tekrar Sorgula  ")
-        if error:
-            self._status_var.set("Hata oluştu.")
-            self._status_lbl.configure(fg=RED)
-            # Detaylı hata penceresini aç
-            ErrorWindow(self, error)
+
+        ok = len(results) - len(errors)
+        if errors:
+            self._status_var.set(
+                f"Tamamlandı — {ok} başarılı, {len(errors)} hatalı")
         else:
-            self._status_var.set(f"Tamamlandı — {len(results)} konşimento sorgulandı.")
-            self._status_lbl.configure(fg="#15803d")
-            self._load_results()
+            self._status_var.set(f"Tamamlandı — {ok} konşimento sorgulandı ✓")
 
-    # ── İlk kurulum kontrolü ─────────────────────────────────────────────────
-
-    def _check_browser(self):
-        """Browser yüklü mü? Değilse kurulum penceresini aç."""
-        if not _playwright_installed():
-            self.after(500, self._show_setup)
-
-    def _show_setup(self):
-        SetupWindow(self, on_done=lambda ok: None)
+        self._load_results()
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────────
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app = MSCApp()
