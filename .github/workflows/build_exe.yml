@@ -25,7 +25,7 @@ jobs:
       - name: Bağımlılıkları kur
         run: |
           python -m pip install --upgrade pip
-          pip install curl_cffi beautifulsoup4 pyinstaller
+          pip install curl_cffi beautifulsoup4 certifi pyinstaller
 
       - name: EXE üret (PyInstaller)
         shell: python
