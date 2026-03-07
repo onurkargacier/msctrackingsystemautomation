@@ -16,6 +16,14 @@ src_path = str(BASE_DIR / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# ── Scraper import (top-level → PyInstaller bundle'a girer) ───────────────────
+try:
+    from msc_scraper import fetch_tracking as _fetch_tracking
+    _IMPORT_ERROR = None
+except Exception as _e:
+    _fetch_tracking = None
+    _IMPORT_ERROR = str(_e)
+
 # ── Veri klasörü ──────────────────────────────────────────────────────────────
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "MSCTakip"
 APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -577,20 +585,33 @@ class MSCApp(tk.Tk):
         threading.Thread(target=self._do_run, args=(bl_list,), daemon=True).start()
 
     def _do_run(self, bl_list):
-        from msc_scraper import fetch_tracking
+        # Import hatası varsa tüm BL'leri hata olarak işaretle
+        if _fetch_tracking is None:
+            results = [{"bl": bl, "eta": None, "etd": None, "source": None,
+                        "error": f"Modül yüklenemedi: {_IMPORT_ERROR}"}
+                       for bl in bl_list]
+            db_save_results(results)
+            self.after(0, self._on_done, results)
+            return
+
         results = []
         n = len(bl_list)
-        for i, bl in enumerate(bl_list):
-            def _upd(msg, _bl=bl, _i=i):
-                self.after(0, self._status_set,
-                           f"[{_i+1}/{n}] {_bl} — {msg}", C["blue"])
-
-            try:
-                r = fetch_tracking(bl, on_status=_upd)
-                results.append(r)
-            except Exception as e:
+        try:
+            for i, bl in enumerate(bl_list):
+                def _upd(msg, _bl=bl, _i=i):
+                    self.after(0, self._status_set,
+                               f"[{_i+1}/{n}] {_bl} — {msg}", C["blue"])
+                try:
+                    r = _fetch_tracking(bl, on_status=_upd)
+                    results.append(r)
+                except Exception as e:
+                    results.append({"bl": bl, "eta": None, "etd": None,
+                                     "source": None, "error": str(e)})
+        except Exception as e:
+            # Beklenmedik genel hata
+            for bl in bl_list[len(results):]:
                 results.append({"bl": bl, "eta": None, "etd": None,
-                                 "source": None, "error": str(e)})
+                                 "source": None, "error": f"Genel hata: {e}"})
 
         db_save_results(results)
         self.after(0, self._on_done, results)

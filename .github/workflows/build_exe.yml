@@ -38,6 +38,8 @@ jobs:
               "--name", "MSCTakip",
               "--collect-all", "curl_cffi",
               "--collect-all", "certifi",
+              "--add-data", "src;src",        # msc_scraper.py bundle'a gir
+              "--hidden-import", "msc_scraper",
               "--hidden-import", "bs4",
               "--hidden-import", "tkinter",
               "--hidden-import", "tkinter.ttk",
